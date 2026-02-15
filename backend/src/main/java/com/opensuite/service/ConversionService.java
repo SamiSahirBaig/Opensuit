@@ -446,9 +446,17 @@ public class ConversionService {
         return outputPath.toString();
     }
 
-    // ============== PDF to HTML ==============
+    // ============== PDF to HTML (LibreOffice with fallback) ==============
 
     private String convertPdfToHtml(Job job) throws IOException {
+        // Prefer LibreOffice for rich HTML (preserves formatting, images, layout)
+        if (libreOffice.isAvailable()) {
+            log.info("Using LibreOffice for PDF->HTML conversion");
+            return convertViaLibreOffice(job, "html");
+        }
+
+        // Fallback: basic text extraction
+        log.info("LibreOffice not available, using fallback for PDF->HTML");
         String outputName = UUID.randomUUID() + ".html";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
@@ -475,9 +483,17 @@ public class ConversionService {
         return outputPath.toString();
     }
 
-    // ============== PDF to Word ==============
+    // ============== PDF to Word (LibreOffice with POI fallback) ==============
 
     private String convertPdfToWord(Job job) throws IOException {
+        // Prefer LibreOffice for high-fidelity conversion
+        if (libreOffice.isAvailable()) {
+            log.info("Using LibreOffice for PDF->Word conversion");
+            return convertViaLibreOffice(job, "docx");
+        }
+
+        // Fallback: basic text extraction to Word
+        log.info("LibreOffice not available, using POI fallback for PDF->Word");
         String outputName = UUID.randomUUID() + ".docx";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
@@ -545,9 +561,17 @@ public class ConversionService {
         return outputPath.toString();
     }
 
-    // ============== PDF to Excel ==============
+    // ============== PDF to Excel (LibreOffice with POI fallback) ==============
 
     private String convertPdfToExcel(Job job) throws IOException {
+        // Prefer LibreOffice for high-fidelity conversion
+        if (libreOffice.isAvailable()) {
+            log.info("Using LibreOffice for PDF->Excel conversion");
+            return convertViaLibreOffice(job, "xlsx");
+        }
+
+        // Fallback: text extraction to Excel
+        log.info("LibreOffice not available, using POI fallback for PDF->Excel");
         String outputName = UUID.randomUUID() + ".xlsx";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 

@@ -50,6 +50,55 @@ docker compose up -d
 # Access at http://localhost (Nginx)
 ```
 
+## 💻 Setup on a New Laptop
+
+If you are moving this project to a new machine, follow these steps:
+
+### 1. Clone the Repository
+Open your terminal or command prompt and run:
+```bash
+git clone https://github.com/samisahirbaig/opensuit.git
+cd opensuit
+```
+
+### 2. Backend Setup
+1. **Install Java 21+**: Ensure you have Java 21 or later installed (`java -version`).
+2. **Navigate to backend**:
+   ```bash
+   cd backend
+   ```
+3. **Run the server**:
+   - On Windows:
+     ```bash
+     .\mvnw spring-boot:run
+     ```
+   - On Mac/Linux:
+     ```bash
+     ./mvnw spring-boot:run
+     ```
+   The backend will start on `http://localhost:8080`.
+
+### 3. Frontend Setup
+1. **Install Node.js**: Ensure you have Node.js 20+ installed (`node -v`).
+2. **Open a new terminal** (keep the backend running).
+3. **Navigate to frontend**:
+   ```bash
+   cd frontend
+   ```
+4. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+5. **Run the development server**:
+   ```bash
+   npm run dev
+   ```
+   The frontend will be available at `http://localhost:3000`.
+
+### 4. Troubleshooting
+- **Port Conflicts**: Ensure ports 8080 (backend) and 3000 (frontend) are not in use.
+- **Database**: By default, the app uses an in-memory H2 database. No external database installation is required for development.
+
 ## 📁 Project Structure
 
 ```

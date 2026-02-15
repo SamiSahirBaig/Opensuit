@@ -10,7 +10,7 @@ export function Footer() {
     return (
         <footer className="border-t border-white/5 bg-[#08080d]">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-8 lg:gap-12">
                     {/* Brand */}
                     <div className="col-span-2 md:col-span-1">
                         <Link href="/" className="flex items-center gap-2.5 mb-4">
@@ -54,7 +54,7 @@ export function Footer() {
                         </ul>
                     </div>
 
-                    {/* Security + Legal */}
+                    {/* Security */}
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Security</h3>
                         <ul className="space-y-2.5">
@@ -68,6 +68,28 @@ export function Footer() {
                             <li>
                                 <Link href="/blog" className="text-sm text-gray-500 hover:text-indigo-400 transition-colors">
                                     Blog
+                                </Link>
+                            </li>
+                        </ul>
+                    </div>
+
+                    {/* Company */}
+                    <div>
+                        <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Company</h3>
+                        <ul className="space-y-2.5">
+                            <li>
+                                <Link href="/about" className="text-sm text-gray-500 hover:text-indigo-400 transition-colors">
+                                    About
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/privacy" className="text-sm text-gray-500 hover:text-indigo-400 transition-colors">
+                                    Privacy Policy
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/terms" className="text-sm text-gray-500 hover:text-indigo-400 transition-colors">
+                                    Terms of Service
                                 </Link>
                             </li>
                         </ul>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { tools, toolCategories } from "@/lib/tools";
-import { Shield, Zap, Lock, Clock, ArrowRight } from "lucide-react";
+import { Shield, Zap, Lock, Clock, ArrowRight, Sparkles, Globe, FileCheck } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -10,7 +10,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
           <div className="text-center max-w-4xl mx-auto">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold mb-6 animate-fade-in-up">
-              <Zap className="h-3.5 w-3.5" />
+              <Sparkles className="h-3.5 w-3.5" />
               100% FREE • NO SIGNUP REQUIRED
             </div>
 
@@ -35,6 +35,22 @@ export default function HomePage() {
                 Merge PDFs Now
               </Link>
             </div>
+
+            {/* Stats */}
+            <div className="mt-16 grid grid-cols-3 gap-8 max-w-lg mx-auto animate-fade-in-up animate-delay-300">
+              {[
+                { value: "22+", label: "Free Tools" },
+                { value: "<2s", label: "Processing" },
+                { value: "50MB", label: "Max File Size" },
+              ].map(({ value, label }) => (
+                <div key={label}>
+                  <p className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
+                    {value}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">{label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -54,7 +70,7 @@ export default function HomePage() {
               { icon: Clock, label: "No Signup", desc: "Instant access" },
             ].map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 border border-indigo-500/10">
                   <Icon className="h-5 w-5 text-indigo-400" />
                 </div>
                 <div>
@@ -70,6 +86,18 @@ export default function HomePage() {
       {/* Tools Grid */}
       <section id="tools" className="py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-4">
+              All{" "}
+              <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
+                Tools
+              </span>
+            </h2>
+            <p className="text-gray-400 max-w-xl mx-auto">
+              Everything you need to work with PDF documents — conversion, editing, security, and more.
+            </p>
+          </div>
+
           {toolCategories.map((category) => {
             const categoryTools = tools.filter((t) => t.category === category.id);
             if (categoryTools.length === 0) return null;
@@ -77,8 +105,8 @@ export default function HomePage() {
             return (
               <div key={category.id} className="mb-16 last:mb-0">
                 <div className="mb-8">
-                  <h2 className="text-2xl font-bold text-white mb-2">{category.label} Tools</h2>
-                  <p className="text-gray-500">{category.description}</p>
+                  <h3 className="text-xl font-bold text-white mb-1">{category.label} Tools</h3>
+                  <p className="text-sm text-gray-500">{category.description}</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -89,15 +117,18 @@ export default function HomePage() {
                         <div className="glass-card tool-card p-5 h-full">
                           <div className="flex items-start gap-4">
                             <div
-                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-110"
-                              style={{ background: `${tool.color}15`, border: `1px solid ${tool.color}25` }}
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all group-hover:scale-110 group-hover:shadow-lg"
+                              style={{
+                                background: `${tool.color}15`,
+                                border: `1px solid ${tool.color}25`,
+                              }}
                             >
                               <IconComponent className="h-5 w-5" style={{ color: tool.color }} />
                             </div>
                             <div className="min-w-0">
-                              <h3 className="text-sm font-semibold text-white mb-1 group-hover:text-indigo-400 transition-colors">
+                              <h4 className="text-sm font-semibold text-white mb-1 group-hover:text-indigo-400 transition-colors">
                                 {tool.title}
-                              </h3>
+                              </h4>
                               <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
                                 {tool.description}
                               </p>
@@ -111,6 +142,50 @@ export default function HomePage() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="border-t border-white/5 py-20 bg-[#0c0c14]">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-white mb-12 text-center">
+            How It{" "}
+            <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
+              Works
+            </span>
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                step: "01",
+                icon: FileCheck,
+                title: "Upload Your File",
+                desc: "Drag and drop or click to select your file. Supports PDF, Word, Excel, PowerPoint, images, and more.",
+              },
+              {
+                step: "02",
+                icon: Zap,
+                title: "Process Instantly",
+                desc: "Our engine processes your file in under 2 seconds. Watch real-time progress as it works.",
+              },
+              {
+                step: "03",
+                icon: ArrowRight,
+                title: "Download Result",
+                desc: "Download your processed file immediately. It's automatically deleted from our servers after 1 hour.",
+              },
+            ].map(({ step, icon: Icon, title, desc }) => (
+              <div key={step} className="relative text-center">
+                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/10 border border-indigo-500/15 mb-4 mx-auto">
+                  <Icon className="h-6 w-6 text-indigo-400" />
+                </div>
+                <span className="absolute top-0 right-1/4 text-4xl font-extrabold text-white/[0.03]">{step}</span>
+                <h3 className="text-base font-semibold text-white mb-2">{title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -128,36 +203,38 @@ export default function HomePage() {
               or secure your PDFs — OpenSuite handles it all with professional-grade accuracy and speed.
             </p>
 
-            <h3 className="text-xl font-semibold text-white">Complete PDF Conversion Suite</h3>
-            <p>
-              Our document conversion engine supports bidirectional conversion between PDF and all major formats including
-              Microsoft Word (.docx), Excel (.xlsx), PowerPoint (.pptx), JPG, PNG, HTML, and plain text. Each conversion
-              preserves the original formatting, layout, fonts, images, and document structure for pixel-perfect results.
-            </p>
-
-            <h3 className="text-xl font-semibold text-white">Professional PDF Editing Tools</h3>
-            <p>
-              Beyond simple conversion, OpenSuite offers a complete suite of PDF editing capabilities. Merge multiple PDFs
-              into one document, split large files into manageable pieces, rotate pages, reorder content, add watermarks,
-              insert page numbers, and compress files to reduce size — all without installing any software.
-            </p>
-
-            <h3 className="text-xl font-semibold text-white">Enterprise-Grade Security</h3>
-            <p>
-              Your document security is our top priority. OpenSuite processes all files with encrypted connections,
-              generates random UUID filenames for complete anonymity, and automatically deletes all uploaded and processed
-              files within one hour. We never store user data, require no account creation, and maintain no logs of your
-              document content. Add password protection, set editing restrictions, or clean metadata from your PDFs
-              with our dedicated security tools.
-            </p>
-
-            <h3 className="text-xl font-semibold text-white">Built for Performance</h3>
-            <p>
-              Every tool in OpenSuite is optimized for speed and reliability. Most operations complete in under 2 seconds,
-              with real-time progress tracking for larger files. Our processing engine handles documents of any complexity
-              — from simple single-page files to multi-hundred-page reports with complex layouts, embedded images, and
-              interactive form fields.
-            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 not-prose my-8">
+              {[
+                {
+                  icon: Globe,
+                  title: "Complete Conversion Suite",
+                  text: "Bidirectional conversion between PDF and Word, Excel, PowerPoint, JPG, PNG, HTML, and plain text with pixel-perfect formatting.",
+                },
+                {
+                  icon: Sparkles,
+                  title: "Professional Editing Tools",
+                  text: "Merge, split, rotate, reorder, watermark, add page numbers, and compress — all in your browser.",
+                },
+                {
+                  icon: Shield,
+                  title: "Enterprise-Grade Security",
+                  text: "HTTPS encryption, UUID filenames, auto-deletion, and zero document logging or content analysis.",
+                },
+                {
+                  icon: Zap,
+                  title: "Built for Performance",
+                  text: "Most operations complete in under 2 seconds with real-time progress tracking for larger files.",
+                },
+              ].map(({ icon: Icon, title, text }) => (
+                <div key={title} className="glass-card p-5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 mb-3">
+                    <Icon className="h-4 w-4 text-indigo-400" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-white mb-1.5">{title}</h3>
+                  <p className="text-xs text-gray-500 leading-relaxed">{text}</p>
+                </div>
+              ))}
+            </div>
 
             <h3 className="text-xl font-semibold text-white">No Hidden Costs, No Limitations</h3>
             <p>
@@ -165,14 +242,6 @@ export default function HomePage() {
               There are no daily limits, no file size restrictions beyond our generous 50MB maximum, no watermarks on
               output files, and no quality reduction. Professional PDF processing should be accessible to everyone —
               students, professionals, businesses, and individuals alike.
-            </p>
-
-            <h3 className="text-xl font-semibold text-white">How It Works</h3>
-            <p>
-              Using OpenSuite is simple: select your desired tool, upload your file using our drag-and-drop interface,
-              and download the result. No registration, no email verification, no software installation. The entire
-              process takes just seconds from start to finish. Our platform works in any modern web browser on desktop,
-              tablet, and mobile devices.
             </p>
           </div>
         </div>

@@ -65,6 +65,9 @@ export function Header() {
                         <Link href="/pdf-to-word" className="px-4 py-2.5 text-sm text-gray-400 hover:text-white rounded-lg hover:bg-white/5" onClick={() => setMenuOpen(false)}>
                             PDF to Word
                         </Link>
+                        <Link href="/blog" className="px-4 py-2.5 text-sm text-gray-400 hover:text-white rounded-lg hover:bg-white/5" onClick={() => setMenuOpen(false)}>
+                            Blog
+                        </Link>
                     </nav>
                 )}
             </div>

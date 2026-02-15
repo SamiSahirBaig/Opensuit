@@ -1,42 +1,12 @@
 import { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Calendar } from "lucide-react";
+import { ArrowRight, Calendar, Clock } from "lucide-react";
+import { blogPosts } from "@/lib/posts";
 
 export const metadata: Metadata = {
     title: "Blog – PDF Tips, Tutorials & Guides",
     description: "Learn how to make the most of PDF tools. Tips, tutorials, and guides for document management, conversion, and security.",
 };
-
-const blogPosts = [
-    {
-        slug: "how-to-merge-pdf-files",
-        title: "How to Merge PDF Files: Complete Guide",
-        excerpt: "Learn the easiest ways to combine multiple PDF files into one document. Step-by-step guide with tips for maintaining formatting.",
-        date: "2026-02-14",
-        category: "Tutorial",
-    },
-    {
-        slug: "pdf-to-word-best-practices",
-        title: "PDF to Word Conversion: Best Practices",
-        excerpt: "Convert PDF documents to editable Word files without losing formatting. Expert tips for handling complex layouts.",
-        date: "2026-02-10",
-        category: "Tips",
-    },
-    {
-        slug: "secure-your-pdf-documents",
-        title: "How to Secure Your PDF Documents",
-        excerpt: "Protect sensitive PDF documents with passwords, restrictions, and metadata cleaning. A complete guide to PDF security.",
-        date: "2026-02-08",
-        category: "Security",
-    },
-    {
-        slug: "compress-pdf-without-quality-loss",
-        title: "Compress PDF Without Quality Loss",
-        excerpt: "Reduce PDF file size while maintaining document quality. Learn about different compression levels and when to use them.",
-        date: "2026-02-05",
-        category: "Tutorial",
-    },
-];
 
 export default function BlogPage() {
     return (
@@ -56,24 +26,30 @@ export default function BlogPage() {
 
                 <div className="grid gap-6">
                     {blogPosts.map((post) => (
-                        <article key={post.slug} className="glass-card p-6 group cursor-pointer">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="min-w-0">
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <span className="badge bg-indigo-500/10 text-indigo-400">{post.category}</span>
-                                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                                            <Calendar className="h-3 w-3" />
-                                            {new Date(post.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                                        </span>
+                        <Link key={post.slug} href={`/blog/${post.slug}`}>
+                            <article className="glass-card p-6 group cursor-pointer">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <span className="badge bg-indigo-500/10 text-indigo-400">{post.category}</span>
+                                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                                                <Calendar className="h-3 w-3" />
+                                                {new Date(post.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                            </span>
+                                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                                                <Clock className="h-3 w-3" />
+                                                {post.readTime}
+                                            </span>
+                                        </div>
+                                        <h2 className="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">
+                                            {post.title}
+                                        </h2>
+                                        <p className="text-sm text-gray-500 line-clamp-2">{post.excerpt}</p>
                                     </div>
-                                    <h2 className="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">
-                                        {post.title}
-                                    </h2>
-                                    <p className="text-sm text-gray-500 line-clamp-2">{post.excerpt}</p>
+                                    <ArrowRight className="h-5 w-5 text-gray-600 group-hover:text-indigo-400 shrink-0 mt-1 transition-colors" />
                                 </div>
-                                <ArrowRight className="h-5 w-5 text-gray-600 group-hover:text-indigo-400 shrink-0 mt-1 transition-colors" />
-                            </div>
-                        </article>
+                            </article>
+                        </Link>
                     ))}
                 </div>
 

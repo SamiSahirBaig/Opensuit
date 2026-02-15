@@ -123,11 +123,9 @@ public class LibreOfficeConverter {
 
             // Determine output file path
             // LibreOffice names the output file as <input-basename>.<outputFormat>
-            String inputBaseName = input.getFileName().toString();
-            int dotIdx = inputBaseName.lastIndexOf('.');
-            if (dotIdx > 0) {
-                inputBaseName = inputBaseName.substring(0, dotIdx);
-            }
+            String rawName = input.getFileName().toString();
+            int dotIdx = rawName.lastIndexOf('.');
+            final String inputBaseName = dotIdx > 0 ? rawName.substring(0, dotIdx) : rawName;
             Path outputPath = Paths.get(outputDir, inputBaseName + "." + outputFormat);
 
             if (!Files.exists(outputPath)) {
