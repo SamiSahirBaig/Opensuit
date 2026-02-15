@@ -1,0 +1,14 @@
+com\opensuite\config\SecurityConfig.class
+com\opensuite\config\AsyncConfig.class
+com\opensuite\service\ConversionService$1.class
+com\opensuite\OpenSuiteApplication.class
+com\opensuite\config\CorsConfig.class
+com\opensuite\dto\UploadResponse.class
+com\opensuite\service\ConversionService.class
+com\opensuite\config\SwaggerConfig.class
+com\opensuite\controller\BatchController.class
+com\opensuite\service\FileUploadService.class
+com\opensuite\service\BatchProcessingService.class
+com\opensuite\model\ConversionType.class
+com\opensuite\config\RateLimitFilter.class
+com\opensuite\service\JobService.class

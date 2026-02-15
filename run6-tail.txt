@@ -1,0 +1,5 @@
+﻿2026-02-15 10:44:45 [main] INFO  o.s.s.quartz.SchedulerFactoryBean - Starting Quartz Scheduler now
+2026-02-15 10:44:45 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED started.
+2026-02-15 10:44:45 [main] INFO  com.opensuite.OpenSuiteApplication - Started OpenSuiteApplication in 5.225 seconds (process running for 5.593)
+2026-02-15 10:44:45 [scheduling-1] INFO  c.o.scheduler.FileCleanupScheduler - Starting file cleanup...
+2026-02-15 10:44:45 [scheduling-1] INFO  c.o.scheduler.FileCleanupScheduler - Cleanup complete: 0 files deleted, 0 jobs cleaned
