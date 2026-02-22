@@ -26,7 +26,20 @@ export const metadata: Metadata = {
   authors: [{ name: "OpenSuite" }],
   creator: "OpenSuite",
   publisher: "OpenSuite",
-  robots: { index: true, follow: true, googleBot: { index: true, follow: true } },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  other: {
+    "theme-color": "#0a0a12",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
@@ -51,12 +64,51 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.variable}>
       <head>
+        {/* Preconnect hints for performance */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://pagead2.googlesyndication.com" />
+        <meta name="theme-color" content="#0a0a12" />
+
         {/* Google AdSense - Replace with your publisher ID */}
         <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
           crossOrigin="anonymous"
         ></script>
+
+        {/* Organization Schema */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "OpenSuite",
+              url: "https://opensuite.io",
+              logo: "https://opensuite.io/og-image.png",
+              sameAs: ["https://github.com/SamiSahirBaig/Opensuit"],
+            }),
+          }}
+        />
+
+        {/* WebSite Schema with SearchAction */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "OpenSuite",
+              url: "https://opensuite.io",
+              potentialAction: {
+                "@type": "SearchAction",
+                target: "https://opensuite.io/?q={search_term_string}",
+                "query-input": "required name=search_term_string",
+              },
+            }),
+          }}
+        />
       </head>
       <body className="min-h-screen flex flex-col">
         <Header />
