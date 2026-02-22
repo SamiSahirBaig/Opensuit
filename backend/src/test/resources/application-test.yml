@@ -1,0 +1,48 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # Disable Redis auto-config for tests
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+  # Disable security for integration tests
+  security:
+    user:
+      name: test
+      password: test
+
+opensuite:
+  storage:
+    temp-dir: ./test-temp-files
+    max-file-size-mb: 50
+  download:
+    token-expiry-minutes: 10
+  rate-limit:
+    requests-per-minute: 1000
+    burst-capacity: 1000
+  libreoffice:
+    path: soffice
+    timeout-seconds: 30
+
+# Disable Sentry in tests
+sentry:
+  dsn:
+
+logging:
+  level:
+    com.opensuite: WARN

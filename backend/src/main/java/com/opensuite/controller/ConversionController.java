@@ -1,11 +1,17 @@
 package com.opensuite.controller;
 
+import com.opensuite.dto.ErrorResponse;
 import com.opensuite.dto.UploadResponse;
 import com.opensuite.model.ConversionType;
 import com.opensuite.model.Job;
 import com.opensuite.service.ConversionService;
 import com.opensuite.service.FileUploadService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,7 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/convert")
-@Tag(name = "Conversion", description = "Document conversion operations")
+@Tag(name = "Conversion", description = "Document conversion operations — convert between PDF, Word, Excel, PowerPoint, images, HTML, TXT, and EPUB formats")
 public class ConversionController {
 
     private final FileUploadService fileUploadService;
@@ -25,10 +31,21 @@ public class ConversionController {
     }
 
     @PostMapping("/{type}")
-    @Operation(summary = "Convert a document to the specified format")
+    @Operation(summary = "Convert a document to the specified format", description = "Uploads a file and starts an asynchronous conversion job. "
+            +
+            "Supported types include: pdf-to-word, word-to-pdf, pdf-to-excel, excel-to-pdf, " +
+            "pdf-to-pptx, pptx-to-pdf, pdf-to-jpg, jpg-to-pdf, pdf-to-png, png-to-pdf, " +
+            "pdf-to-html, html-to-pdf, pdf-to-txt, txt-to-pdf, pdf-to-epub, epub-to-pdf, pdf-to-pdfa. " +
+            "Poll the returned jobId via GET /api/status/{jobId} to track progress.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Conversion job accepted and queued", content = @Content(schema = @Schema(implementation = UploadResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Unknown conversion type", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "413", description = "File exceeds the 50 MB upload limit", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "500", description = "Unexpected server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public ResponseEntity<UploadResponse> convert(
-            @PathVariable String type,
-            @RequestParam("file") MultipartFile file) {
+            @Parameter(description = "Conversion type, e.g. `pdf-to-word`, `excel-to-pdf`", required = true, example = "pdf-to-word") @PathVariable String type,
+            @Parameter(description = "The file to convert (max 50 MB)", required = true) @RequestParam("file") MultipartFile file) {
 
         ConversionType conversionType = parseConversionType(type);
         Job job = fileUploadService.uploadFile(file, "convert:" + type);

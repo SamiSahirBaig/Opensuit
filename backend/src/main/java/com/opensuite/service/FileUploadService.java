@@ -12,9 +12,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -22,6 +25,25 @@ import java.util.UUID;
 public class FileUploadService {
 
     private static final Logger log = LoggerFactory.getLogger(FileUploadService.class);
+    private static final Logger securityLog = LoggerFactory.getLogger("SECURITY");
+
+    // Magic byte signatures for file type validation
+    private static final byte[] PDF_MAGIC = new byte[] { 0x25, 0x50, 0x44, 0x46 }; // %PDF
+    private static final byte[] ZIP_MAGIC = new byte[] { 0x50, 0x4B, 0x03, 0x04 }; // PK (DOCX/XLSX/PPTX/EPUB)
+    private static final byte[] JPEG_MAGIC = new byte[] { (byte) 0xFF, (byte) 0xD8, (byte) 0xFF };
+    private static final byte[] PNG_MAGIC = new byte[] { (byte) 0x89, 0x50, 0x4E, 0x47 }; // .PNG
+    private static final byte[] GIF_MAGIC = new byte[] { 0x47, 0x49, 0x46 }; // GIF
+
+    // Map MIME types to their expected magic bytes
+    private static final Map<String, byte[]> MIME_TO_MAGIC = Map.ofEntries(
+            Map.entry("application/pdf", PDF_MAGIC),
+            Map.entry("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ZIP_MAGIC),
+            Map.entry("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ZIP_MAGIC),
+            Map.entry("application/vnd.openxmlformats-officedocument.presentationml.presentation", ZIP_MAGIC),
+            Map.entry("application/epub+zip", ZIP_MAGIC),
+            Map.entry("image/jpeg", JPEG_MAGIC),
+            Map.entry("image/png", PNG_MAGIC),
+            Map.entry("image/gif", GIF_MAGIC));
 
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
             "application/pdf",
@@ -85,7 +107,7 @@ public class FileUploadService {
         job.setJobType(jobType);
         job.setInputFileName(storedFileName);
         job.setInputFilePath(filePath.toString());
-        job.setOriginalFileName(file.getOriginalFilename());
+        job.setOriginalFileName(sanitizeFilename(file.getOriginalFilename()));
         job.setFileSizeBytes(file.getSize());
         job.setStatus(JobStatus.QUEUED);
 
@@ -124,7 +146,7 @@ public class FileUploadService {
         job.setJobType(jobType);
         job.setInputFileName(fileNames.toString());
         job.setInputFilePath(batchDir.toString());
-        job.setOriginalFileName(files[0].getOriginalFilename());
+        job.setOriginalFileName(sanitizeFilename(files[0].getOriginalFilename()));
         job.setFileSizeBytes(calculateTotalSize(files));
         job.setStatus(JobStatus.QUEUED);
 
@@ -138,6 +160,8 @@ public class FileUploadService {
 
         long maxBytes = (long) maxFileSizeMb * 1024 * 1024;
         if (file.getSize() > maxBytes) {
+            securityLog.warn("File size limit exceeded: {} bytes from file '{}'",
+                    file.getSize(), sanitizeFilename(file.getOriginalFilename()));
             throw new IllegalArgumentException(
                     String.format("File size (%d MB) exceeds maximum allowed size (%d MB)",
                             file.getSize() / (1024 * 1024), maxFileSizeMb));
@@ -145,11 +169,75 @@ public class FileUploadService {
 
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType)) {
+            securityLog.warn("Rejected unsupported file type: '{}' for file '{}'",
+                    contentType, sanitizeFilename(file.getOriginalFilename()));
             throw new IllegalArgumentException("File type not supported: " + contentType);
+        }
+
+        // Validate magic bytes match claimed MIME type
+        validateMagicBytes(file, contentType);
+    }
+
+    /**
+     * Validate that the file's magic bytes (header) match the claimed MIME type.
+     * Prevents attackers from uploading malicious files with spoofed Content-Type.
+     */
+    private void validateMagicBytes(MultipartFile file, String contentType) {
+        byte[] expectedMagic = MIME_TO_MAGIC.get(contentType);
+        if (expectedMagic == null) {
+            // No magic bytes check for text/* and legacy Office formats (DOC/XLS/PPT)
+            return;
+        }
+
+        try (InputStream is = file.getInputStream()) {
+            byte[] fileHeader = new byte[expectedMagic.length];
+            int bytesRead = is.read(fileHeader);
+            if (bytesRead < expectedMagic.length || !Arrays.equals(fileHeader, expectedMagic)) {
+                securityLog.warn("Magic byte mismatch: claimed '{}' but header does not match for file '{}'",
+                        contentType, sanitizeFilename(file.getOriginalFilename()));
+                throw new IllegalArgumentException(
+                        "File content does not match its declared type: " + contentType);
+            }
+        } catch (IOException e) {
+            throw new FileProcessingException("Failed to read file for validation", e);
         }
     }
 
-    private String getExtension(String filename) {
+    /**
+     * Sanitize a filename to prevent path traversal and injection attacks.
+     * Strips ../ sequences, null bytes, and restricts to safe characters.
+     */
+    static String sanitizeFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return "unnamed";
+        }
+
+        // Remove path separators and traversal sequences
+        String sanitized = filename
+                .replace("\0", "") // null bytes
+                .replace("..", "") // directory traversal
+                .replace("/", "") // Unix path separator
+                .replace("\\", ""); // Windows path separator
+
+        // Keep only safe characters: letters, digits, dots, hyphens, underscores,
+        // spaces
+        sanitized = sanitized.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
+
+        // Ensure the filename is not empty after sanitization
+        if (sanitized.isBlank() || sanitized.equals(".")) {
+            return "unnamed";
+        }
+
+        // Limit filename length
+        if (sanitized.length() > 255) {
+            String ext = getExtension(sanitized);
+            sanitized = sanitized.substring(0, 255 - ext.length()) + ext;
+        }
+
+        return sanitized;
+    }
+
+    private static String getExtension(String filename) {
         if (filename == null)
             return "";
         int dot = filename.lastIndexOf('.');

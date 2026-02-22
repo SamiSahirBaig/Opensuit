@@ -3,6 +3,9 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { CookieConsent } from "@/components/CookieConsent";
+
+import Script from "next/script";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -50,18 +53,33 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
-      <head>
-        {/* Google AdSense - Replace with your publisher ID */}
-        <script
+      <body className="min-h-screen flex flex-col">
+        {/* Google AdSense - Replace ca-pub-XXXXXXXXXXXXXXXX with your real publisher ID */}
+        <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
           crossOrigin="anonymous"
-        ></script>
-      </head>
-      <body className="min-h-screen flex flex-col">
+          strategy="afterInteractive"
+        />
+        {/* Google Analytics 4 - Replace G-XXXXXXXXXX with your real GA4 Measurement ID */}
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID || "G-XXXXXXXXXX"}`}
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${process.env.NEXT_PUBLIC_GA_ID || "G-XXXXXXXXXX"}', {
+              anonymize_ip: true
+            });
+          `}
+        </Script>
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
+        <CookieConsent />
       </body>
     </html>
   );

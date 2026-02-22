@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { FileUpload } from "@/components/FileUpload";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { AdUnit } from "@/components/AdUnit";
 import { uploadFile, uploadFiles, pollJobStatus, JobStatusResponse } from "@/lib/api";
 import { getToolBySlug } from "@/lib/tools";
 import { ArrowRight, RefreshCw, CheckCircle, Shield, Zap, Clock } from "lucide-react";
+import {
+    trackToolPageViewed,
+    trackFileUploadStarted,
+    trackFileUploadCompleted,
+    trackConversionStarted,
+    trackConversionCompleted,
+    trackError,
+} from "@/lib/analytics";
 
 interface ToolPageClientProps {
     slug: string;
@@ -21,12 +29,22 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
     const [error, setError] = useState<string | null>(null);
     const [extraParams, setExtraParams] = useState<Record<string, string>>({});
 
+    // Track tool page view
+    useEffect(() => {
+        trackToolPageViewed(slug, tool.title);
+    }, [slug, tool.title]);
+
     const handleProcess = useCallback(async () => {
         if (files.length === 0) return;
 
         setIsProcessing(true);
         setError(null);
         setStatus(null);
+
+        // Track upload start
+        const totalSize = files.reduce((sum: number, f: File) => sum + f.size, 0);
+        trackFileUploadStarted(slug, files[0].name, totalSize);
+        trackConversionStarted(slug);
 
         try {
             let response;
@@ -41,13 +59,24 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
                 response = await uploadFile(files[0], endpoint);
             }
 
-            await pollJobStatus(response.jobId, (s) => setStatus(s));
+            // Track upload completed
+            trackFileUploadCompleted(slug, response.jobId);
+
+            await pollJobStatus(response.jobId, (s) => {
+                setStatus(s);
+                // Track conversion completed
+                if (s.status === "COMPLETED") {
+                    trackConversionCompleted(slug, response.jobId);
+                }
+            });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "An unexpected error occurred. Please try again.");
+            const errorMsg = err instanceof Error ? err.message : "An unexpected error occurred. Please try again.";
+            setError(errorMsg);
+            trackError(slug, errorMsg);
         } finally {
             setIsProcessing(false);
         }
-    }, [files, tool, extraParams]);
+    }, [files, tool, extraParams, slug]);
 
     const handleReset = () => {
         setFiles([]);

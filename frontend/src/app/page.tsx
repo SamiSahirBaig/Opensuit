@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { tools, toolCategories } from "@/lib/tools";
 import { Shield, Zap, Lock, Clock, ArrowRight, Sparkles, Globe, FileCheck } from "lucide-react";
+import { AdBanner } from "@/components/AdUnit";
 
 export default function HomePage() {
   return (
@@ -145,6 +146,11 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Ad: Between tools and How It Works */}
+      <div className="border-t border-white/5 bg-[#0c0c14]">
+        <AdBanner />
+      </div>
+
       {/* How It Works */}
       <section className="border-t border-white/5 py-20 bg-[#0c0c14]">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
@@ -188,6 +194,11 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Ad: Between How It Works and SEO Content */}
+      <div className="border-t border-white/5">
+        <AdBanner />
+      </div>
 
       {/* SEO Content */}
       <section className="border-t border-white/5 py-20">

@@ -92,6 +92,11 @@ export function Footer() {
                                     Terms of Service
                                 </Link>
                             </li>
+                            <li>
+                                <Link href="/cookies" className="text-sm text-gray-500 hover:text-indigo-400 transition-colors">
+                                    Cookie Policy
+                                </Link>
+                            </li>
                         </ul>
                     </div>
                 </div>

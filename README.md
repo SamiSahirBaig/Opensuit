@@ -1,5 +1,9 @@
 # OpenSuite – Open-Access PDF Suite
 
+[![Backend CI](https://github.com/samisahirbaig/opensuit/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/samisahirbaig/opensuit/actions/workflows/backend-ci.yml)
+[![Frontend CI](https://github.com/samisahirbaig/opensuit/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/samisahirbaig/opensuit/actions/workflows/frontend-ci.yml)
+[![Deploy](https://github.com/samisahirbaig/opensuit/actions/workflows/deploy.yml/badge.svg)](https://github.com/samisahirbaig/opensuit/actions/workflows/deploy.yml)
+
 A production-grade, free, ad-supported PDF processing platform with professional tools for document conversion, editing, security, and more.
 
 ## ⚡ Tech Stack
