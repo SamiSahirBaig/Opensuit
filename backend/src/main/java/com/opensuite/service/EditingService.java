@@ -5,7 +5,7 @@ import com.opensuite.model.EditType;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
 import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.io.MemoryUsageSetting;
+import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -98,7 +98,7 @@ public class EditingService {
 
         jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 85);
         // Use temp-file-only memory setting for large merges
-        merger.mergeDocuments(MemoryUsageSetting.setupTempFileOnly());
+        merger.mergeDocuments(IOUtils.createTempFileOnlyStreamCache());
         return outputPath.toString();
     }
 
