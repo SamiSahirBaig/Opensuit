@@ -5,8 +5,8 @@ import com.opensuite.model.EditType;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
-import org.apache.pdfbox.multipdf.Splitter;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -17,14 +17,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class EditingService {
@@ -66,6 +66,8 @@ public class EditingService {
         }
     }
 
+    // ── MERGE ────────────────────────────────────────────────────────────
+
     private String mergePdfs(Job job) throws IOException {
         String outputName = UUID.randomUUID() + ".pdf";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
@@ -73,51 +75,204 @@ public class EditingService {
         PDFMergerUtility merger = new PDFMergerUtility();
         merger.setDestinationFileName(outputPath.toString());
 
-        // Files are stored as comma-separated paths in the batch directory
         Path batchDir = Paths.get(job.getInputFilePath());
         if (Files.isDirectory(batchDir)) {
-            Files.list(batchDir)
-                    .filter(p -> p.toString().endsWith(".pdf"))
+            List<Path> sources = Files.list(batchDir)
+                    .filter(p -> p.toString().toLowerCase().endsWith(".pdf"))
                     .sorted()
-                    .forEach(p -> {
-                        try {
-                            merger.addSource(p.toFile());
-                        } catch (Exception e) {
-                            throw new RuntimeException("Failed to add source: " + p, e);
-                        }
-                    });
+                    .toList();
+
+            if (sources.isEmpty()) {
+                throw new FileProcessingException("No PDF files found to merge");
+            }
+
+            for (int i = 0; i < sources.size(); i++) {
+                merger.addSource(sources.get(i).toFile());
+                int progress = 10 + (int) ((double) i / sources.size() * 70);
+                jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
+            }
         } else {
-            // Single file - just copy
             Files.copy(Paths.get(job.getInputFilePath()), outputPath);
             return outputPath.toString();
         }
 
-        merger.mergeDocuments(null);
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 85);
+        // Use temp-file-only memory setting for large merges
+        merger.mergeDocuments(MemoryUsageSetting.setupTempFileOnly());
         return outputPath.toString();
     }
 
+    // ── SPLIT ────────────────────────────────────────────────────────────
+
     private String splitPdf(Job job, Map<String, String> params) throws IOException {
-        String outputName = UUID.randomUUID() + ".pdf";
-        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
-
-        int splitPage = params != null && params.containsKey("page") ? Integer.parseInt(params.get("page")) : 1;
-
+        String splitMode = params != null ? params.getOrDefault("splitMode", "ranges") : "ranges";
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
-            Splitter splitter = new Splitter();
-            splitter.setSplitAtPage(splitPage);
 
-            List<PDDocument> pages = splitter.split(document);
-            if (!pages.isEmpty()) {
-                pages.get(0).save(outputPath.toFile());
-                // Close all split documents
-                for (PDDocument doc : pages) {
-                    doc.close();
+        try (PDDocument document = Loader.loadPDF(inputFile)) {
+            int totalPages = document.getNumberOfPages();
+            log.info("Split mode={} totalPages={} jobId={}", splitMode, totalPages, job.getId());
+
+            List<File> splitFiles = switch (splitMode) {
+                case "individual" -> splitIndividual(document, totalPages, job);
+                case "every-n" -> {
+                    int n = params != null && params.containsKey("pages")
+                            ? Integer.parseInt(params.get("pages"))
+                            : 1;
+                    yield splitEveryN(document, totalPages, n, job);
                 }
+                case "by-size" -> {
+                    int maxMb = params != null && params.containsKey("maxSizeMb")
+                            ? Integer.parseInt(params.get("maxSizeMb"))
+                            : 5;
+                    yield splitBySize(document, totalPages, maxMb, job);
+                }
+                default -> { // "ranges" or legacy "page" param
+                    String ranges = params != null ? params.get("ranges") : null;
+                    if (ranges == null && params != null && params.containsKey("page")) {
+                        // Legacy fallback: split at page N → produces two files
+                        int page = Integer.parseInt(params.get("page"));
+                        ranges = "1-" + page + "," + (page + 1) + "-" + totalPages;
+                    }
+                    if (ranges == null)
+                        ranges = "1-" + totalPages;
+                    yield splitByRanges(document, totalPages, ranges, job);
+                }
+            };
+
+            // Single result → return the PDF directly; multiple → ZIP
+            if (splitFiles.size() == 1) {
+                return splitFiles.get(0).getAbsolutePath();
+            }
+            return packageAsZip(splitFiles, job);
+        }
+    }
+
+    private List<File> splitByRanges(PDDocument source, int totalPages, String rangesStr, Job job)
+            throws IOException {
+        List<File> results = new ArrayList<>();
+        String[] ranges = rangesStr.split(",");
+
+        for (int r = 0; r < ranges.length; r++) {
+            String range = ranges[r].trim();
+            String[] parts = range.contains("-") ? range.split("-") : new String[] { range, range };
+            int start = Math.max(1, Integer.parseInt(parts[0].trim()));
+            int end = Math.min(totalPages, Integer.parseInt(parts[1].trim()));
+
+            try (PDDocument chunk = new PDDocument()) {
+                for (int p = start; p <= end; p++) {
+                    chunk.addPage(source.getPage(p - 1));
+                }
+                File out = tempPdf("split_" + (r + 1) + "_pages" + start + "-" + end);
+                chunk.save(out);
+                results.add(out);
+            }
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING,
+                    10 + (int) ((double) (r + 1) / ranges.length * 80));
+        }
+        return results;
+    }
+
+    private List<File> splitIndividual(PDDocument source, int totalPages, Job job) throws IOException {
+        List<File> results = new ArrayList<>();
+        for (int i = 0; i < totalPages; i++) {
+            try (PDDocument single = new PDDocument()) {
+                single.addPage(source.getPage(i));
+                File out = tempPdf("page_" + (i + 1));
+                single.save(out);
+                results.add(out);
+            }
+            if (i % 10 == 0) {
+                jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING,
+                        10 + (int) ((double) (i + 1) / totalPages * 80));
+            }
+        }
+        return results;
+    }
+
+    private List<File> splitEveryN(PDDocument source, int totalPages, int n, Job job) throws IOException {
+        if (n < 1)
+            n = 1;
+        List<File> results = new ArrayList<>();
+        int chunkIndex = 0;
+
+        for (int start = 0; start < totalPages; start += n) {
+            int end = Math.min(start + n, totalPages);
+            try (PDDocument chunk = new PDDocument()) {
+                for (int p = start; p < end; p++) {
+                    chunk.addPage(source.getPage(p));
+                }
+                File out = tempPdf("chunk_" + (++chunkIndex) + "_pages" + (start + 1) + "-" + end);
+                chunk.save(out);
+                results.add(out);
+            }
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING,
+                    10 + (int) ((double) end / totalPages * 80));
+        }
+        return results;
+    }
+
+    private List<File> splitBySize(PDDocument source, int totalPages, int maxMb, Job job) throws IOException {
+        long maxBytes = (long) maxMb * 1024 * 1024;
+        List<File> results = new ArrayList<>();
+        int chunkIndex = 0;
+        int pageIndex = 0;
+
+        while (pageIndex < totalPages) {
+            PDDocument chunk = new PDDocument();
+            int chunkStart = pageIndex + 1;
+
+            // Add pages until we exceed the limit or run out
+            while (pageIndex < totalPages) {
+                chunk.addPage(source.getPage(pageIndex));
+                pageIndex++;
+
+                // Estimate current chunk size by writing to a temp buffer
+                if (chunk.getNumberOfPages() > 1) {
+                    ByteArrayOutputStream sizeCheck = new ByteArrayOutputStream();
+                    chunk.save(sizeCheck);
+                    if (sizeCheck.size() > maxBytes && chunk.getNumberOfPages() > 1) {
+                        // Remove last page - it pushed us over
+                        chunk.removePage(chunk.getNumberOfPages() - 1);
+                        pageIndex--;
+                        break;
+                    }
+                }
+            }
+
+            File out = tempPdf("chunk_" + (++chunkIndex) + "_pages" + chunkStart + "-" + pageIndex);
+            chunk.save(out);
+            chunk.close();
+            results.add(out);
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING,
+                    10 + (int) ((double) pageIndex / totalPages * 80));
+        }
+        return results;
+    }
+
+    private File tempPdf(String label) throws IOException {
+        return Files.createTempFile(
+                Paths.get(fileUploadService.getTempDir()),
+                label + "_", ".pdf").toFile();
+    }
+
+    private String packageAsZip(List<File> files, Job job) throws IOException {
+        String zipName = UUID.randomUUID() + ".zip";
+        Path zipPath = Paths.get(fileUploadService.getTempDir(), zipName);
+
+        try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipPath.toFile()))) {
+            for (int i = 0; i < files.size(); i++) {
+                File f = files.get(i);
+                zos.putNextEntry(new ZipEntry(f.getName()));
+                Files.copy(f.toPath(), zos);
+                zos.closeEntry();
+                // Clean up temp split file
+                f.delete();
             }
         }
 
-        return outputPath.toString();
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 95);
+        log.info("Packaged {} split files into ZIP: {}", files.size(), zipPath);
+        return zipPath.toString();
     }
 
     private String rotatePdf(Job job, Map<String, String> params) throws IOException {

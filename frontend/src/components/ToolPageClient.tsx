@@ -15,15 +15,22 @@ import {
     trackConversionCompleted,
     trackError,
 } from "@/lib/analytics";
+import { MergePDFTool } from "@/components/MergePDFTool";
+import { SplitPDFTool } from "@/components/SplitPDFTool";
 
 interface ToolPageClientProps {
     slug: string;
 }
 
 export function ToolPageClient({ slug }: ToolPageClientProps) {
+    // Route to dedicated components for merge/split
+    if (slug === "merge-pdf") return <MergePDFTool />;
+    if (slug === "split-pdf") return <SplitPDFTool />;
+
     const tool = getToolBySlug(slug);
     if (!tool) return null;
     const [files, setFiles] = useState<File[]>([]);
+
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<JobStatusResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
