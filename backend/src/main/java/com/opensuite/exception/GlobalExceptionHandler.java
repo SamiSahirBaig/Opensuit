@@ -13,7 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 
-@ControllerAdvice
+@ControllerAdvice(basePackages = "com.opensuite.controller")
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
