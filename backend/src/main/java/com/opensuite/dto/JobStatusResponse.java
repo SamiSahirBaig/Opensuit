@@ -24,6 +24,15 @@ public class JobStatusResponse {
     @Schema(description = "Error details when status is FAILED", example = "Unsupported file format", nullable = true)
     private String errorMessage;
 
+    @Schema(description = "Original file name as uploaded by the user", nullable = true)
+    private String originalFileName;
+
+    @Schema(description = "Original file size in bytes (for compression operations)", nullable = true)
+    private Long originalSizeBytes;
+
+    @Schema(description = "Compressed file size in bytes (for compression operations)", nullable = true)
+    private Long compressedSizeBytes;
+
     public JobStatusResponse() {
     }
 
@@ -73,5 +82,29 @@ public class JobStatusResponse {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getOriginalFileName() {
+        return originalFileName;
+    }
+
+    public void setOriginalFileName(String originalFileName) {
+        this.originalFileName = originalFileName;
+    }
+
+    public Long getOriginalSizeBytes() {
+        return originalSizeBytes;
+    }
+
+    public void setOriginalSizeBytes(Long originalSizeBytes) {
+        this.originalSizeBytes = originalSizeBytes;
+    }
+
+    public Long getCompressedSizeBytes() {
+        return compressedSizeBytes;
+    }
+
+    public void setCompressedSizeBytes(Long compressedSizeBytes) {
+        this.compressedSizeBytes = compressedSizeBytes;
     }
 }

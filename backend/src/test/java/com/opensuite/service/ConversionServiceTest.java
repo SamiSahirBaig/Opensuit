@@ -8,6 +8,13 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xslf.usermodel.XMLSlideShow;
+import org.apache.poi.xslf.usermodel.XSLFSlide;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -179,4 +186,112 @@ class ConversionServiceTest {
 
         verify(libreOfficeConverter).convert(anyString(), eq("epub"), anyString());
     }
+
+    @Test
+    void processConversion_wordToPdf_poiFallback_createsOutput() throws IOException {
+        // Create a real .docx file using POI
+        File docxFile = tempDir.resolve("test.docx").toFile();
+        try (XWPFDocument doc = new XWPFDocument()) {
+            XWPFParagraph para = doc.createParagraph();
+            XWPFRun run = para.createRun();
+            run.setText("Hello from Word test");
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(docxFile)) {
+                doc.write(fos);
+            }
+        }
+
+        Job job = new Job();
+        job.setId("word-to-pdf");
+        job.setInputFilePath(docxFile.getAbsolutePath());
+        job.setOriginalFileName("test.docx");
+
+        when(jobService.getJob("word-to-pdf")).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+        when(libreOfficeConverter.isAvailable()).thenReturn(false);
+
+        conversionService.processConversion("word-to-pdf", ConversionType.WORD_TO_PDF);
+
+        verify(jobService).setOutputFile(eq("word-to-pdf"), anyString());
+        verify(jobService).updateJobStatus("word-to-pdf", JobStatus.COMPLETED, 100);
+    }
+
+    @Test
+    void processConversion_excelToPdf_poiFallback_createsOutput() throws IOException {
+        // Create a real .xlsx file using POI
+        File xlsxFile = tempDir.resolve("test.xlsx").toFile();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Test");
+            Row row = sheet.createRow(0);
+            row.createCell(0).setCellValue("Name");
+            row.createCell(1).setCellValue("Value");
+            Row row2 = sheet.createRow(1);
+            row2.createCell(0).setCellValue("Item1");
+            row2.createCell(1).setCellValue(42);
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(xlsxFile)) {
+                wb.write(fos);
+            }
+        }
+
+        Job job = new Job();
+        job.setId("excel-to-pdf");
+        job.setInputFilePath(xlsxFile.getAbsolutePath());
+        job.setOriginalFileName("test.xlsx");
+
+        when(jobService.getJob("excel-to-pdf")).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+        when(libreOfficeConverter.isAvailable()).thenReturn(false);
+
+        conversionService.processConversion("excel-to-pdf", ConversionType.EXCEL_TO_PDF);
+
+        verify(jobService).setOutputFile(eq("excel-to-pdf"), anyString());
+        verify(jobService).updateJobStatus("excel-to-pdf", JobStatus.COMPLETED, 100);
+    }
+
+    @Test
+    void processConversion_pptxToPdf_poiFallback_createsOutput() throws IOException {
+        // Create a real .pptx file using POI
+        File pptxFile = tempDir.resolve("test.pptx").toFile();
+        try (XMLSlideShow pptx = new XMLSlideShow()) {
+            XSLFSlide slide = pptx.createSlide();
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(pptxFile)) {
+                pptx.write(fos);
+            }
+        }
+
+        Job job = new Job();
+        job.setId("pptx-to-pdf");
+        job.setInputFilePath(pptxFile.getAbsolutePath());
+        job.setOriginalFileName("test.pptx");
+
+        when(jobService.getJob("pptx-to-pdf")).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+        when(libreOfficeConverter.isAvailable()).thenReturn(false);
+
+        conversionService.processConversion("pptx-to-pdf", ConversionType.PPTX_TO_PDF);
+
+        verify(jobService).setOutputFile(eq("pptx-to-pdf"), anyString());
+        verify(jobService).updateJobStatus("pptx-to-pdf", JobStatus.COMPLETED, 100);
+    }
+
+    @Test
+    void processConversion_csvToPdf_fallback_createsOutput() throws IOException {
+        // Create a CSV file
+        File csvFile = tempDir.resolve("test.csv").toFile();
+        Files.writeString(csvFile.toPath(), "Name,Age,City\nAlice,30,NYC\nBob,25,LA");
+
+        Job job = new Job();
+        job.setId("csv-to-pdf");
+        job.setInputFilePath(csvFile.getAbsolutePath());
+        job.setOriginalFileName("test.csv");
+
+        when(jobService.getJob("csv-to-pdf")).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+        when(libreOfficeConverter.isAvailable()).thenReturn(false);
+
+        conversionService.processConversion("csv-to-pdf", ConversionType.CSV_TO_PDF);
+
+        verify(jobService).setOutputFile(eq("csv-to-pdf"), anyString());
+        verify(jobService).updateJobStatus("csv-to-pdf", JobStatus.COMPLETED, 100);
+    }
 }
+

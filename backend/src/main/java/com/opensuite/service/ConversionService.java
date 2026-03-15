@@ -74,6 +74,7 @@ public class ConversionService {
                 case PDF_TO_EPUB -> convertViaLibreOffice(job, "epub");
                 case EPUB_TO_PDF -> convertViaLibreOffice(job, "pdf");
                 case PDF_TO_PDFA -> convertViaLibreOffice(job, "pdf");
+                case CSV_TO_PDF -> convertCsvToPdf(job);
             };
 
             jobService.setOutputFile(jobId, outputPath);
@@ -741,6 +742,85 @@ public class ConversionService {
                 contentStream.showText(line);
                 contentStream.endText();
                 yPosition -= (fontSize + 3);
+            }
+
+            contentStream.close();
+            pdfDoc.save(outputPath.toFile());
+        }
+
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
+        return outputPath.toString();
+    }
+
+    // ============== CSV to PDF (LibreOffice with fallback) ==============
+
+    private String convertCsvToPdf(Job job) throws IOException {
+        if (libreOffice.isAvailable()) {
+            log.info("Using LibreOffice for CSV->PDF conversion");
+            return convertViaLibreOffice(job, "pdf");
+        }
+
+        log.info("LibreOffice not available, using fallback for CSV->PDF");
+        return convertCsvToPdfFallback(job);
+    }
+
+    private String convertCsvToPdfFallback(Job job) throws IOException {
+        String outputName = UUID.randomUUID() + ".pdf";
+        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+
+        String csvContent = Files.readString(Paths.get(job.getInputFilePath()));
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 30);
+
+        try (PDDocument pdfDoc = new PDDocument()) {
+            PDType1Font fontRegular = new PDType1Font(Standard14Fonts.FontName.COURIER);
+            PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.COURIER_BOLD);
+            float fontSize = 9;
+            float lineHeight = 12;
+            float margin = 40;
+            float pageWidth = PDRectangle.A4.getWidth();
+            float pageHeight = PDRectangle.A4.getHeight();
+            float usableWidth = pageWidth - 2 * margin;
+
+            PDPage currentPage = new PDPage(PDRectangle.A4);
+            pdfDoc.addPage(currentPage);
+            PDPageContentStream contentStream = new PDPageContentStream(pdfDoc, currentPage);
+            float yPosition = pageHeight - margin;
+
+            // Title
+            contentStream.beginText();
+            contentStream.setFont(fontBold, 12);
+            contentStream.newLineAtOffset(margin, yPosition);
+            contentStream.showText("CSV Data");
+            contentStream.endText();
+            yPosition -= 20;
+
+            String[] rows = csvContent.split("\\n");
+            for (int i = 0; i < rows.length; i++) {
+                if (yPosition < margin) {
+                    contentStream.close();
+                    currentPage = new PDPage(PDRectangle.A4);
+                    pdfDoc.addPage(currentPage);
+                    contentStream = new PDPageContentStream(pdfDoc, currentPage);
+                    yPosition = pageHeight - margin;
+                }
+
+                String line = sanitizeText(rows[i].trim());
+                // Replace commas with pipe separators for readability
+                line = line.replace(",", "  |  ");
+
+                float textWidth = fontRegular.getStringWidth(line) / 1000 * fontSize;
+                if (textWidth > usableWidth) {
+                    int maxChars = (int) (line.length() * usableWidth / textWidth);
+                    line = line.substring(0, Math.max(1, maxChars - 3)) + "...";
+                }
+
+                PDType1Font rowFont = (i == 0) ? fontBold : fontRegular;
+                contentStream.beginText();
+                contentStream.setFont(rowFont, fontSize);
+                contentStream.newLineAtOffset(margin, yPosition);
+                contentStream.showText(line);
+                contentStream.endText();
+                yPosition -= lineHeight;
             }
 
             contentStream.close();

@@ -17,6 +17,7 @@ import {
 } from "@/lib/analytics";
 import { MergePDFTool } from "@/components/MergePDFTool";
 import { SplitPDFTool } from "@/components/SplitPDFTool";
+import { CompressPDFTool } from "@/components/CompressPDFTool";
 
 interface ToolPageClientProps {
     slug: string;
@@ -26,6 +27,7 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
     // Route to dedicated components for merge/split
     if (slug === "merge-pdf") return <MergePDFTool />;
     if (slug === "split-pdf") return <SplitPDFTool />;
+    if (slug === "compress-pdf") return <CompressPDFTool />;
 
     const tool = getToolBySlug(slug);
     if (!tool) return null;
