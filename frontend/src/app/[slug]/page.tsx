@@ -54,6 +54,15 @@ export default async function ToolPage({ params }: ToolPageProps) {
         notFound();
     }
 
+    const categoryLabel =
+        tool.category === "convert"
+            ? "Conversion"
+            : tool.category === "edit"
+                ? "Editing"
+                : tool.category === "security"
+                    ? "Security"
+                    : "Advanced";
+
     return (
         <>
             <ToolPageClient slug={slug} />
@@ -91,6 +100,70 @@ export default async function ToolPage({ params }: ToolPageProps) {
                                 "@type": "Question",
                                 name: "Is my file secure?",
                                 acceptedAnswer: { "@type": "Answer", text: "All files are encrypted during transfer and automatically deleted after 1 hour." },
+                            },
+                        ],
+                    }),
+                }}
+            />
+
+            {/* BreadcrumbList */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "BreadcrumbList",
+                        itemListElement: [
+                            {
+                                "@type": "ListItem",
+                                position: 1,
+                                name: "Home",
+                                item: "https://opensuite.io",
+                            },
+                            {
+                                "@type": "ListItem",
+                                position: 2,
+                                name: `${categoryLabel} Tools`,
+                                item: `https://opensuite.io/#tools`,
+                            },
+                            {
+                                "@type": "ListItem",
+                                position: 3,
+                                name: tool.title,
+                                item: `https://opensuite.io/${tool.slug}`,
+                            },
+                        ],
+                    }),
+                }}
+            />
+
+            {/* HowTo Schema */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "HowTo",
+                        name: `How to Use ${tool.title} Online`,
+                        description: `${tool.description} Follow these simple steps.`,
+                        step: [
+                            {
+                                "@type": "HowToStep",
+                                name: "Upload Your File",
+                                text: `Go to the ${tool.title} page and click 'Choose File' or drag and drop your file.`,
+                                position: 1,
+                            },
+                            {
+                                "@type": "HowToStep",
+                                name: "Process",
+                                text: `Click the process button to start ${tool.title.toLowerCase()}. Processing typically takes under 2 seconds.`,
+                                position: 2,
+                            },
+                            {
+                                "@type": "HowToStep",
+                                name: "Download Result",
+                                text: "Once processing is complete, click the download button to save your file.",
+                                position: 3,
                             },
                         ],
                     }),
