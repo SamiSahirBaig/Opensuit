@@ -45,13 +45,14 @@ public class ConversionController {
     })
     public ResponseEntity<UploadResponse> convert(
             @Parameter(description = "Conversion type, e.g. `pdf-to-word`, `excel-to-pdf`", required = true, example = "pdf-to-word") @PathVariable String type,
-            @Parameter(description = "The file to convert (max 50 MB)", required = true) @RequestParam("file") MultipartFile file) {
+            @Parameter(description = "The file to convert (max 50 MB)", required = true) @RequestParam("file") MultipartFile file,
+            @Parameter(description = "Enable OCR for scanned PDFs (requires Tesseract)") @RequestParam(value = "ocr", defaultValue = "false") boolean ocr) {
 
         ConversionType conversionType = parseConversionType(type);
         Job job = fileUploadService.uploadFile(file, "convert:" + type);
 
         // Start async processing
-        conversionService.processConversion(job.getId(), conversionType);
+        conversionService.processConversion(job.getId(), conversionType, ocr);
 
         return ResponseEntity.accepted().body(new UploadResponse(
                 job.getId(),

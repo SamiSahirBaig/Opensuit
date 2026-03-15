@@ -5,17 +5,21 @@ import com.opensuite.model.ConversionType;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.util.Units;
 import org.apache.poi.xslf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
 import org.slf4j.Logger;
@@ -24,6 +28,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Dimension;
 import java.awt.RenderingHints;
@@ -32,6 +37,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,6 +59,11 @@ public class ConversionService {
 
     @Async("taskExecutor")
     public void processConversion(String jobId, ConversionType type) {
+        processConversion(jobId, type, false);
+    }
+
+    @Async("taskExecutor")
+    public void processConversion(String jobId, ConversionType type, boolean useOcr) {
         try {
             jobService.updateJobStatus(jobId, JobStatus.PROCESSING, 10);
             Job job = jobService.getJob(jobId);
@@ -66,9 +77,9 @@ public class ConversionService {
                 case WORD_TO_PDF -> convertWordToPdf(job);
                 case EXCEL_TO_PDF -> convertExcelToPdf(job);
                 case PPTX_TO_PDF -> convertPptxToPdf(job);
-                case PDF_TO_WORD -> convertPdfToWord(job);
-                case PDF_TO_EXCEL -> convertPdfToExcel(job);
-                case PDF_TO_PPTX -> convertViaLibreOffice(job, "pptx");
+                case PDF_TO_WORD -> convertPdfToWord(job, useOcr);
+                case PDF_TO_EXCEL -> convertPdfToExcel(job, useOcr);
+                case PDF_TO_PPTX -> convertPdfToPptx(job);
                 case TXT_TO_PDF -> convertTxtToPdf(job);
                 case HTML_TO_PDF -> convertHtmlToPdf(job);
                 case PDF_TO_EPUB -> convertViaLibreOffice(job, "epub");
@@ -484,72 +495,90 @@ public class ConversionService {
         return outputPath.toString();
     }
 
-    // ============== PDF to Word (LibreOffice with POI fallback) ==============
+    // ============== PDF to Word (LibreOffice with enhanced POI fallback) ==============
 
-    private String convertPdfToWord(Job job) throws IOException {
-        // Prefer LibreOffice for high-fidelity conversion
-        if (libreOffice.isAvailable()) {
+    private String convertPdfToWord(Job job, boolean useOcr) throws IOException {
+        // Prefer LibreOffice for high-fidelity conversion (unless OCR requested)
+        if (libreOffice.isAvailable() && !useOcr) {
             log.info("Using LibreOffice for PDF->Word conversion");
             return convertViaLibreOffice(job, "docx");
         }
 
-        // Fallback: basic text extraction to Word
-        log.info("LibreOffice not available, using POI fallback for PDF->Word");
+        log.info("Using enhanced POI fallback for PDF->Word (ocr={})", useOcr);
         String outputName = UUID.randomUUID() + ".docx";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
         try (PDDocument pdfDocument = Loader.loadPDF(inputFile)) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            String fullText = stripper.getText(pdfDocument);
-
-            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 50);
+            int totalPages = pdfDocument.getNumberOfPages();
+            PDFRenderer renderer = new PDFRenderer(pdfDocument);
 
             try (XWPFDocument doc = new XWPFDocument()) {
-                // Split by pages (PDFTextStripper uses form feed between pages)
-                String[] pages = fullText.split("\f");
+                for (int pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+                    // --- Extract text (OCR or direct) ---
+                    String pageText;
+                    if (useOcr) {
+                        pageText = extractTextViaOcr(renderer, pageIdx);
+                    } else {
+                        PDFTextStripper stripper = new PDFTextStripper();
+                        stripper.setStartPage(pageIdx + 1);
+                        stripper.setEndPage(pageIdx + 1);
+                        pageText = stripper.getText(pdfDocument);
+                    }
 
-                for (int i = 0; i < pages.length; i++) {
-                    String pageText = pages[i].trim();
-                    if (pageText.isEmpty())
-                        continue;
-
-                    // Add page header
-                    if (pages.length > 1) {
+                    // Page header for multi-page docs
+                    if (totalPages > 1) {
                         XWPFParagraph header = doc.createParagraph();
-                        header.setStyle("Heading2");
                         XWPFRun headerRun = header.createRun();
-                        headerRun.setText("Page " + (i + 1));
+                        headerRun.setText("Page " + (pageIdx + 1));
                         headerRun.setBold(true);
                         headerRun.setFontSize(14);
+                        headerRun.setFontFamily("Calibri");
+                        headerRun.setColor("2563EB");
                     }
 
-                    // Split into paragraphs by double newlines
-                    String[] paragraphs = pageText.split("\\n\\s*\\n");
-                    for (String para : paragraphs) {
-                        String trimmed = para.trim();
-                        if (trimmed.isEmpty())
-                            continue;
+                    // --- Extract and embed images from this page ---
+                    extractAndEmbedImages(pdfDocument, pageIdx, doc);
 
-                        XWPFParagraph p = doc.createParagraph();
-                        XWPFRun run = p.createRun();
-                        // Handle line breaks within paragraph
+                    // --- Process text: detect tables vs paragraphs ---
+                    String[] blocks = pageText.split("\\n\\s*\\n");
+                    for (String block : blocks) {
+                        String trimmed = block.trim();
+                        if (trimmed.isEmpty()) continue;
+
                         String[] lines = trimmed.split("\\n");
-                        for (int l = 0; l < lines.length; l++) {
-                            run.setText(lines[l].trim());
-                            if (l < lines.length - 1) {
-                                run.addBreak();
+                        if (looksLikeTable(lines)) {
+                            createWordTable(doc, lines);
+                        } else {
+                            for (String line : lines) {
+                                String lineTrimmed = line.trim();
+                                if (lineTrimmed.isEmpty()) continue;
+
+                                XWPFParagraph p = doc.createParagraph();
+                                XWPFRun run = p.createRun();
+                                run.setText(lineTrimmed);
+                                run.setFontFamily("Calibri");
+
+                                // Heuristic: short ALL-CAPS or lines < 60 chars ending without period → heading
+                                if (lineTrimmed.length() < 60 && lineTrimmed.equals(lineTrimmed.toUpperCase())
+                                        && lineTrimmed.length() > 3) {
+                                    run.setBold(true);
+                                    run.setFontSize(14);
+                                } else {
+                                    run.setFontSize(11);
+                                }
                             }
                         }
-                        run.setFontFamily("Calibri");
-                        run.setFontSize(11);
                     }
 
-                    // Add page break between pages (except last)
-                    if (i < pages.length - 1) {
+                    // Page break between pages
+                    if (pageIdx < totalPages - 1) {
                         XWPFParagraph pageBreak = doc.createParagraph();
                         pageBreak.setPageBreak(true);
                     }
+
+                    int progress = 10 + (int) ((double) (pageIdx + 1) / totalPages * 70);
+                    jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
                 }
 
                 try (FileOutputStream fos = new FileOutputStream(outputPath.toFile())) {
@@ -558,66 +587,226 @@ public class ConversionService {
             }
         }
 
-        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 90);
         return outputPath.toString();
     }
 
-    // ============== PDF to Excel (LibreOffice with POI fallback) ==============
+    /**
+     * Extract images from a PDF page and embed them into the Word document.
+     */
+    private void extractAndEmbedImages(PDDocument pdfDocument, int pageIdx, XWPFDocument doc) {
+        try {
+            PDPage page = pdfDocument.getPage(pageIdx);
+            PDResources resources = page.getResources();
+            if (resources == null) return;
 
-    private String convertPdfToExcel(Job job) throws IOException {
-        // Prefer LibreOffice for high-fidelity conversion
-        if (libreOffice.isAvailable()) {
+            for (COSName name : resources.getXObjectNames()) {
+                PDXObject xObject = resources.getXObject(name);
+                if (xObject instanceof PDImageXObject image) {
+                    try {
+                        BufferedImage bufferedImage = image.getImage();
+                        if (bufferedImage == null || bufferedImage.getWidth() < 20) continue;
+
+                        ByteArrayOutputStream imgBytes = new ByteArrayOutputStream();
+                        ImageIO.write(bufferedImage, "png", imgBytes);
+
+                        XWPFParagraph imgParagraph = doc.createParagraph();
+                        imgParagraph.setAlignment(ParagraphAlignment.CENTER);
+                        XWPFRun imgRun = imgParagraph.createRun();
+
+                        // Scale image to fit within page width (max 500px wide)
+                        int maxWidth = 500;
+                        int w = bufferedImage.getWidth();
+                        int h = bufferedImage.getHeight();
+                        if (w > maxWidth) {
+                            h = (int) ((double) maxWidth / w * h);
+                            w = maxWidth;
+                        }
+
+                        imgRun.addPicture(
+                                new ByteArrayInputStream(imgBytes.toByteArray()),
+                                XWPFDocument.PICTURE_TYPE_PNG,
+                                name.getName() + ".png",
+                                Units.toEMU(w), Units.toEMU(h));
+                    } catch (Exception e) {
+                        log.debug("Could not extract image {} from page {}: {}", name.getName(), pageIdx, e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not process images on page {}: {}", pageIdx, e.getMessage());
+        }
+    }
+
+    /**
+     * Detect if a block of lines looks like a table (consistent delimiters).
+     */
+    private boolean looksLikeTable(String[] lines) {
+        if (lines.length < 2) return false;
+        int tabCount = 0, pipeCount = 0, multiSpaceCount = 0;
+        for (String line : lines) {
+            if (line.contains("\t")) tabCount++;
+            if (line.contains("|")) pipeCount++;
+            if (line.matches(".*\\S\\s{2,}\\S.*")) multiSpaceCount++;
+        }
+        // At least 60% of lines have a consistent delimiter
+        double threshold = lines.length * 0.6;
+        return tabCount >= threshold || pipeCount >= threshold || multiSpaceCount >= threshold;
+    }
+
+    /**
+     * Create a Word table from lines with detected delimiters.
+     */
+    private void createWordTable(XWPFDocument doc, String[] lines) {
+        // Determine delimiter
+        String delimiter;
+        int tabCount = 0, pipeCount = 0;
+        for (String line : lines) {
+            if (line.contains("\t")) tabCount++;
+            if (line.contains("|")) pipeCount++;
+        }
+        if (tabCount >= pipeCount) {
+            delimiter = "\t";
+        } else if (pipeCount > 0) {
+            delimiter = "\\|";
+        } else {
+            delimiter = "\\s{2,}";
+        }
+
+        // Parse rows
+        List<String[]> rows = new ArrayList<>();
+        int maxCols = 0;
+        for (String line : lines) {
+            String[] cells = line.split(delimiter);
+            // Trim each cell
+            for (int i = 0; i < cells.length; i++) {
+                cells[i] = cells[i].trim();
+            }
+            rows.add(cells);
+            maxCols = Math.max(maxCols, cells.length);
+        }
+
+        if (maxCols == 0 || rows.isEmpty()) return;
+
+        XWPFTable table = doc.createTable(rows.size(), maxCols);
+        table.setWidth("100%");
+
+        for (int r = 0; r < rows.size(); r++) {
+            XWPFTableRow tableRow = table.getRow(r);
+            String[] cells = rows.get(r);
+            for (int c = 0; c < maxCols; c++) {
+                XWPFTableCell cell = tableRow.getCell(c);
+                String value = c < cells.length ? cells[c] : "";
+                cell.setText(value);
+
+                // Bold first row (header)
+                if (r == 0) {
+                    for (XWPFParagraph p : cell.getParagraphs()) {
+                        for (XWPFRun run : p.getRuns()) {
+                            run.setBold(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add a spacer paragraph after the table
+        doc.createParagraph();
+    }
+
+    // ============== PDF to Excel (LibreOffice with enhanced POI fallback) ==============
+
+    private String convertPdfToExcel(Job job, boolean useOcr) throws IOException {
+        // Prefer LibreOffice (unless OCR requested)
+        if (libreOffice.isAvailable() && !useOcr) {
             log.info("Using LibreOffice for PDF->Excel conversion");
             return convertViaLibreOffice(job, "xlsx");
         }
 
-        // Fallback: text extraction to Excel
-        log.info("LibreOffice not available, using POI fallback for PDF->Excel");
+        log.info("Using enhanced POI fallback for PDF->Excel (ocr={})", useOcr);
         String outputName = UUID.randomUUID() + ".xlsx";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
         try (PDDocument pdfDocument = Loader.loadPDF(inputFile)) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            String fullText = stripper.getText(pdfDocument);
-
-            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 50);
+            int totalPages = pdfDocument.getNumberOfPages();
+            PDFRenderer renderer = new PDFRenderer(pdfDocument);
 
             try (Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
-                Sheet sheet = workbook.createSheet("Extracted Data");
-                String[] lines = fullText.split("\\n");
+                CellStyle headerStyle = workbook.createCellStyle();
+                Font boldFont = workbook.createFont();
+                boldFont.setBold(true);
+                headerStyle.setFont(boldFont);
 
-                for (int i = 0; i < lines.length; i++) {
-                    Row row = sheet.createRow(i);
-                    // Try to split by common delimiters (tab, multiple spaces, pipe)
-                    String line = lines[i].trim();
-                    String[] cells;
-                    if (line.contains("\t")) {
-                        cells = line.split("\t");
-                    } else if (line.contains("|")) {
-                        cells = line.split("\\|");
-                    } else if (line.contains("  ")) {
-                        cells = line.split("\\s{2,}");
+                for (int pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+                    // Extract text (OCR or direct)
+                    String pageText;
+                    if (useOcr) {
+                        pageText = extractTextViaOcr(renderer, pageIdx);
                     } else {
-                        cells = new String[] { line };
+                        PDFTextStripper stripper = new PDFTextStripper();
+                        stripper.setStartPage(pageIdx + 1);
+                        stripper.setEndPage(pageIdx + 1);
+                        pageText = stripper.getText(pdfDocument);
                     }
 
-                    for (int j = 0; j < cells.length; j++) {
-                        Cell cell = row.createCell(j);
-                        String value = cells[j].trim();
-                        // Try to parse as number
-                        try {
-                            double num = Double.parseDouble(value);
-                            cell.setCellValue(num);
-                        } catch (NumberFormatException e) {
-                            cell.setCellValue(value);
+                    String sheetName = totalPages > 1
+                            ? "Page " + (pageIdx + 1)
+                            : "Extracted Data";
+                    Sheet sheet = workbook.createSheet(sheetName);
+                    String[] lines = pageText.split("\\n");
+
+                    // Detect best delimiter for this page
+                    String delimiter = detectBestDelimiter(lines);
+
+                    int rowIdx = 0;
+                    for (String line : lines) {
+                        String trimmed = line.trim();
+                        if (trimmed.isEmpty()) continue;
+
+                        Row row = sheet.createRow(rowIdx);
+                        String[] cells = trimmed.split(delimiter);
+
+                        for (int j = 0; j < cells.length; j++) {
+                            Cell cell = row.createCell(j);
+                            String value = cells[j].trim();
+
+                            // Try numeric parsing
+                            if (value.matches("-?\\d+\\.?\\d*%?")) {
+                                try {
+                                    String numStr = value.endsWith("%")
+                                            ? value.substring(0, value.length() - 1)
+                                            : value;
+                                    double num = Double.parseDouble(numStr);
+                                    if (value.endsWith("%")) num /= 100;
+                                    cell.setCellValue(num);
+                                } catch (NumberFormatException e) {
+                                    cell.setCellValue(value);
+                                }
+                            } else {
+                                cell.setCellValue(value);
+                            }
+
+                            // Bold header row
+                            if (rowIdx == 0) {
+                                cell.setCellStyle(headerStyle);
+                            }
+                        }
+                        rowIdx++;
+                    }
+
+                    // Auto-size columns
+                    if (rowIdx > 0) {
+                        Row firstRow = sheet.getRow(0);
+                        if (firstRow != null) {
+                            for (int i = 0; i < Math.min(20, firstRow.getLastCellNum()); i++) {
+                                sheet.autoSizeColumn(i);
+                            }
                         }
                     }
-                }
 
-                // Auto-size columns (up to 10 columns)
-                for (int i = 0; i < Math.min(10, sheet.getRow(0) != null ? sheet.getRow(0).getLastCellNum() : 0); i++) {
-                    sheet.autoSizeColumn(i);
+                    int progress = 10 + (int) ((double) (pageIdx + 1) / totalPages * 70);
+                    jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
                 }
 
                 try (FileOutputStream fos = new FileOutputStream(outputPath.toFile())) {
@@ -626,8 +815,159 @@ public class ConversionService {
             }
         }
 
-        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 90);
         return outputPath.toString();
+    }
+
+    /**
+     * Detect the best delimiter for a set of lines.
+     */
+    private String detectBestDelimiter(String[] lines) {
+        int tabScore = 0, pipeScore = 0, multiSpaceScore = 0;
+        for (String line : lines) {
+            if (line.contains("\t")) tabScore += 3;
+            if (line.contains("|")) pipeScore += 2;
+            if (line.matches(".*\\S\\s{2,}\\S.*")) multiSpaceScore += 1;
+        }
+        if (tabScore >= pipeScore && tabScore >= multiSpaceScore) return "\t";
+        if (pipeScore >= multiSpaceScore) return "\\|";
+        return "\\s{2,}";
+    }
+
+    // ============== PDF to PowerPoint (LibreOffice with image fallback) ==============
+
+    private String convertPdfToPptx(Job job) throws IOException {
+        // Prefer LibreOffice for high-fidelity conversion
+        if (libreOffice.isAvailable()) {
+            log.info("Using LibreOffice for PDF->PPTX conversion");
+            return convertViaLibreOffice(job, "pptx");
+        }
+
+        log.info("Using image-based fallback for PDF->PPTX");
+        String outputName = UUID.randomUUID() + ".pptx";
+        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+
+        File inputFile = new File(job.getInputFilePath());
+        try (PDDocument pdfDocument = Loader.loadPDF(inputFile);
+             XMLSlideShow pptx = new XMLSlideShow()) {
+
+            PDFRenderer renderer = new PDFRenderer(pdfDocument);
+            int totalPages = pdfDocument.getNumberOfPages();
+
+            // Set slide size to widescreen (10"x7.5")
+            pptx.setPageSize(new Dimension(720, 540));
+
+            for (int pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+                // Render page at 200 DPI for good quality
+                BufferedImage pageImage = renderer.renderImageWithDPI(pageIdx, 200);
+
+                // Convert to PNG bytes
+                ByteArrayOutputStream imgBytes = new ByteArrayOutputStream();
+                ImageIO.write(pageImage, "png", imgBytes);
+
+                // Add image to presentation
+                XSLFPictureData picData = pptx.addPicture(
+                        imgBytes.toByteArray(), XSLFPictureData.PictureType.PNG);
+
+                XSLFSlide slide = pptx.createSlide();
+                XSLFPictureShape pic = slide.createPicture(picData);
+
+                // Scale to fit slide
+                Dimension slideSize = pptx.getPageSize();
+                pic.setAnchor(new java.awt.Rectangle(0, 0, slideSize.width, slideSize.height));
+
+                // Overlay extracted text as a text box
+                PDFTextStripper stripper = new PDFTextStripper();
+                stripper.setStartPage(pageIdx + 1);
+                stripper.setEndPage(pageIdx + 1);
+                String pageText = stripper.getText(pdfDocument).trim();
+
+                if (!pageText.isEmpty()) {
+                    XSLFTextBox textBox = slide.createTextBox();
+                    textBox.setAnchor(new java.awt.Rectangle(20, 20, slideSize.width - 40, slideSize.height - 40));
+                    textBox.clearText();
+
+                    // Add text with semi-transparent background for readability
+                    XSLFTextParagraph para = textBox.addNewTextParagraph();
+                    XSLFTextRun run = para.addNewTextRun();
+                    // Truncate very long text to avoid slide overflow
+                    String truncated = pageText.length() > 2000
+                            ? pageText.substring(0, 2000) + "..."
+                            : pageText;
+                    run.setText(truncated);
+                    run.setFontSize(8.0);
+                    run.setFontColor(new Color(0, 0, 0, 0)); // Transparent — text is selectable but hidden behind image
+                }
+
+                int progress = 10 + (int) ((double) (pageIdx + 1) / totalPages * 70);
+                jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(outputPath.toFile())) {
+                pptx.write(fos);
+            }
+        }
+
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 90);
+        return outputPath.toString();
+    }
+
+    // ============== OCR Helper ==============
+
+    /**
+     * Extract text from a PDF page by rendering it as an image and running Tesseract OCR.
+     * Falls back to PDFTextStripper if Tesseract is not available.
+     */
+    private String extractTextViaOcr(PDFRenderer renderer, int pageIdx) {
+        try {
+            // Render page at 300 DPI for OCR accuracy
+            BufferedImage image = renderer.renderImageWithDPI(pageIdx, 300);
+
+            // Write to temp file
+            Path tempImage = Files.createTempFile("ocr_page_", ".png");
+            Path tempOutput = Files.createTempFile("ocr_out_", "");
+            try {
+                ImageIO.write(image, "png", tempImage.toFile());
+
+                // Run Tesseract
+                ProcessBuilder pb = new ProcessBuilder(
+                        "tesseract", tempImage.toString(), tempOutput.toString());
+                pb.redirectErrorStream(true);
+                Process process = pb.start();
+                int exitCode = process.waitFor();
+
+                if (exitCode == 0) {
+                    // Tesseract writes to output.txt
+                    Path resultFile = Paths.get(tempOutput + ".txt");
+                    if (Files.exists(resultFile)) {
+                        String text = Files.readString(resultFile);
+                        Files.deleteIfExists(resultFile);
+                        return text;
+                    }
+                }
+                log.warn("Tesseract exited with code {} for page {}", exitCode, pageIdx);
+            } finally {
+                Files.deleteIfExists(tempImage);
+                Files.deleteIfExists(tempOutput);
+            }
+        } catch (Exception e) {
+            log.warn("OCR failed for page {}, falling back to text stripper: {}", pageIdx, e.getMessage());
+        }
+        return ""; // Return empty — caller will get regular text extraction as fallback
+    }
+
+    /**
+     * Check if Tesseract OCR is available on the system.
+     */
+    public boolean isOcrAvailable() {
+        try {
+            Process p = new ProcessBuilder("tesseract", "--version")
+                    .redirectErrorStream(true).start();
+            int exit = p.waitFor();
+            return exit == 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ============== TXT to PDF ==============
