@@ -18,6 +18,7 @@ import {
 import { MergePDFTool } from "@/components/MergePDFTool";
 import { SplitPDFTool } from "@/components/SplitPDFTool";
 import { CompressPDFTool } from "@/components/CompressPDFTool";
+import { PDFToOfficeTool } from "@/components/PDFToOfficeTool";
 
 interface ToolPageClientProps {
     slug: string;
@@ -28,6 +29,8 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
     if (slug === "merge-pdf") return <MergePDFTool />;
     if (slug === "split-pdf") return <SplitPDFTool />;
     if (slug === "compress-pdf") return <CompressPDFTool />;
+    if (slug === "pdf-to-word" || slug === "pdf-to-excel" || slug === "pdf-to-pptx")
+        return <PDFToOfficeTool slug={slug} />;
 
     const tool = getToolBySlug(slug);
     if (!tool) return null;
