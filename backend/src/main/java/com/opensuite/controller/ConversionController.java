@@ -17,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/convert")
 @Tag(name = "Conversion", description = "Document conversion operations — convert between PDF, Word, Excel, PowerPoint, images, HTML, TXT, and EPUB formats")
@@ -46,13 +48,23 @@ public class ConversionController {
     public ResponseEntity<UploadResponse> convert(
             @Parameter(description = "Conversion type, e.g. `pdf-to-word`, `excel-to-pdf`", required = true, example = "pdf-to-word") @PathVariable String type,
             @Parameter(description = "The file to convert (max 50 MB)", required = true) @RequestParam("file") MultipartFile file,
-            @Parameter(description = "Enable OCR for scanned PDFs (requires Tesseract)") @RequestParam(value = "ocr", defaultValue = "false") boolean ocr) {
+            @Parameter(description = "Enable OCR for scanned PDFs (requires Tesseract)") @RequestParam(value = "ocr", defaultValue = "false") boolean ocr,
+            @Parameter(description = "OCR language code (e.g. eng, spa, fra, deu, ita)") @RequestParam(value = "language", defaultValue = "eng") String language,
+            @Parameter(description = "DPI for PDF-to-image conversion (72, 150, 300, 600)") @RequestParam(value = "dpi", defaultValue = "300") int dpi,
+            @Parameter(description = "Page size for image-to-PDF (original, a4, letter)") @RequestParam(value = "pageSize", defaultValue = "original") String pageSize,
+            @Parameter(description = "Orientation for image-to-PDF (auto, portrait, landscape)") @RequestParam(value = "orientation", defaultValue = "auto") String orientation) {
 
         ConversionType conversionType = parseConversionType(type);
         Job job = fileUploadService.uploadFile(file, "convert:" + type);
 
-        // Start async processing
-        conversionService.processConversion(job.getId(), conversionType, ocr);
+        // Start async processing with extra parameters
+        Map<String, String> params = new java.util.HashMap<>();
+        params.put("ocr", String.valueOf(ocr));
+        params.put("language", language);
+        params.put("dpi", String.valueOf(dpi));
+        params.put("pageSize", pageSize);
+        params.put("orientation", orientation);
+        conversionService.processConversion(job.getId(), conversionType, params);
 
         return ResponseEntity.accepted().body(new UploadResponse(
                 job.getId(),
@@ -80,6 +92,10 @@ public class ConversionController {
             case "epub_to_pdf", "epub-to-pdf" -> ConversionType.EPUB_TO_PDF;
             case "pdf_to_pdfa", "pdf-to-pdfa" -> ConversionType.PDF_TO_PDFA;
             case "csv_to_pdf", "csv-to-pdf" -> ConversionType.CSV_TO_PDF;
+            case "ocr_pdf", "ocr-pdf" -> ConversionType.OCR_PDF;
+            case "bmp_to_pdf", "bmp-to-pdf" -> ConversionType.BMP_TO_PDF;
+            case "tiff_to_pdf", "tiff-to-pdf" -> ConversionType.TIFF_TO_PDF;
+            case "gif_to_pdf", "gif-to-pdf" -> ConversionType.GIF_TO_PDF;
             default -> throw new IllegalArgumentException("Unknown conversion type: " + type);
         };
     }

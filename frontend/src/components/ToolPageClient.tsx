@@ -19,18 +19,38 @@ import { MergePDFTool } from "@/components/MergePDFTool";
 import { SplitPDFTool } from "@/components/SplitPDFTool";
 import { CompressPDFTool } from "@/components/CompressPDFTool";
 import { PDFToOfficeTool } from "@/components/PDFToOfficeTool";
+import { OCRTool } from "@/components/OCRTool";
+import { PDFToImageTool } from "@/components/PDFToImageTool";
+import { ImageToPDFTool } from "@/components/ImageToPDFTool";
+import { WatermarkPDFTool } from "@/components/WatermarkPDFTool";
+import { PageNumbersTool } from "@/components/PageNumbersTool";
+import { RotatePDFTool } from "@/components/RotatePDFTool";
+import { CropPDFTool } from "@/components/CropPDFTool";
+import { ProtectPDFTool } from "@/components/ProtectPDFTool";
+import { UnlockPDFTool } from "@/components/UnlockPDFTool";
 
 interface ToolPageClientProps {
     slug: string;
 }
 
 export function ToolPageClient({ slug }: ToolPageClientProps) {
-    // Route to dedicated components for merge/split
+    // Route to dedicated components for specific tools
     if (slug === "merge-pdf") return <MergePDFTool />;
     if (slug === "split-pdf") return <SplitPDFTool />;
     if (slug === "compress-pdf") return <CompressPDFTool />;
     if (slug === "pdf-to-word" || slug === "pdf-to-excel" || slug === "pdf-to-pptx")
         return <PDFToOfficeTool slug={slug} />;
+    if (slug === "ocr-pdf") return <OCRTool />;
+    if (slug === "pdf-to-jpg" || slug === "pdf-to-png")
+        return <PDFToImageTool slug={slug} />;
+    if (slug === "jpg-to-pdf" || slug === "png-to-pdf" || slug === "bmp-to-pdf" || slug === "tiff-to-pdf" || slug === "gif-to-pdf")
+        return <ImageToPDFTool slug={slug} />;
+    if (slug === "watermark-pdf") return <WatermarkPDFTool />;
+    if (slug === "add-page-numbers") return <PageNumbersTool />;
+    if (slug === "rotate-pdf") return <RotatePDFTool />;
+    if (slug === "crop-pdf") return <CropPDFTool />;
+    if (slug === "protect-pdf") return <ProtectPDFTool />;
+    if (slug === "unlock-pdf") return <UnlockPDFTool />;
 
     const tool = getToolBySlug(slug);
     if (!tool) return null;

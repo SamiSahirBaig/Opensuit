@@ -103,6 +103,13 @@
             <version>${poi.version}</version>
         </dependency>
 
+        <!-- Image format support (TIFF, BMP) -->
+        <dependency>
+            <groupId>com.github.jai-imageio</groupId>
+            <artifactId>jai-imageio-core</artifactId>
+            <version>1.4.0</version>
+        </dependency>
+
         <!-- MapStruct -->
         <dependency>
             <groupId>org.mapstruct</groupId>

@@ -48,7 +48,7 @@ export function CompressPDFTool() {
             canvas.width = viewport.width;
             canvas.height = viewport.height;
             const ctx = canvas.getContext("2d")!;
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            await page.render({ canvas, canvasContext: ctx, viewport }).promise;
             setThumbnail(canvas.toDataURL("image/jpeg", 0.7));
         } catch {
             setError("Could not read PDF. The file may be corrupted or password-protected.");

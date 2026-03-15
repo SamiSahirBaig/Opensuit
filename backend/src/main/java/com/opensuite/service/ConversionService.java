@@ -16,6 +16,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.*;
@@ -37,9 +38,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class ConversionService {
@@ -49,36 +50,48 @@ public class ConversionService {
     private final JobService jobService;
     private final FileUploadService fileUploadService;
     private final LibreOfficeConverter libreOffice;
+    private final OCRService ocrService;
 
     public ConversionService(JobService jobService, FileUploadService fileUploadService,
-            LibreOfficeConverter libreOffice) {
+            LibreOfficeConverter libreOffice, OCRService ocrService) {
         this.jobService = jobService;
         this.fileUploadService = fileUploadService;
         this.libreOffice = libreOffice;
+        this.ocrService = ocrService;
     }
 
     @Async("taskExecutor")
     public void processConversion(String jobId, ConversionType type) {
-        processConversion(jobId, type, false);
+        processConversion(jobId, type, Map.of());
     }
 
     @Async("taskExecutor")
     public void processConversion(String jobId, ConversionType type, boolean useOcr) {
+        Map<String, String> params = new HashMap<>();
+        params.put("ocr", String.valueOf(useOcr));
+        processConversion(jobId, type, params);
+    }
+
+    @Async("taskExecutor")
+    public void processConversion(String jobId, ConversionType type, Map<String, String> params) {
         try {
             jobService.updateJobStatus(jobId, JobStatus.PROCESSING, 10);
             Job job = jobService.getJob(jobId);
+            boolean useOcr = "true".equalsIgnoreCase(params.getOrDefault("ocr", "false"));
+            String language = params.getOrDefault("language", "eng");
+            int dpi = parseIntSafe(params.getOrDefault("dpi", "300"), 300);
 
             String outputPath = switch (type) {
                 case PDF_TO_TXT -> convertPdfToTxt(job);
-                case PDF_TO_JPG -> convertPdfToImage(job, "jpg");
-                case PDF_TO_PNG -> convertPdfToImage(job, "png");
-                case JPG_TO_PDF, PNG_TO_PDF -> convertImageToPdf(job);
+                case PDF_TO_JPG -> convertPdfToImage(job, "jpg", dpi);
+                case PDF_TO_PNG -> convertPdfToImage(job, "png", dpi);
+                case JPG_TO_PDF, PNG_TO_PDF, BMP_TO_PDF, TIFF_TO_PDF, GIF_TO_PDF -> convertImageToPdf(job, params);
                 case PDF_TO_HTML -> convertPdfToHtml(job);
                 case WORD_TO_PDF -> convertWordToPdf(job);
                 case EXCEL_TO_PDF -> convertExcelToPdf(job);
                 case PPTX_TO_PDF -> convertPptxToPdf(job);
-                case PDF_TO_WORD -> convertPdfToWord(job, useOcr);
-                case PDF_TO_EXCEL -> convertPdfToExcel(job, useOcr);
+                case PDF_TO_WORD -> convertPdfToWord(job, useOcr, language);
+                case PDF_TO_EXCEL -> convertPdfToExcel(job, useOcr, language);
                 case PDF_TO_PPTX -> convertPdfToPptx(job);
                 case TXT_TO_PDF -> convertTxtToPdf(job);
                 case HTML_TO_PDF -> convertHtmlToPdf(job);
@@ -86,6 +99,7 @@ public class ConversionService {
                 case EPUB_TO_PDF -> convertViaLibreOffice(job, "pdf");
                 case PDF_TO_PDFA -> convertViaLibreOffice(job, "pdf");
                 case CSV_TO_PDF -> convertCsvToPdf(job);
+                case OCR_PDF -> convertOcrPdf(job, language);
             };
 
             jobService.setOutputFile(jobId, outputPath);
@@ -95,6 +109,14 @@ public class ConversionService {
         } catch (Exception e) {
             log.error("Conversion failed for job {}: {}", jobId, e.getMessage(), e);
             jobService.failJob(jobId, "Conversion failed: " + e.getMessage());
+        }
+    }
+
+    private int parseIntSafe(String value, int defaultValue) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
         }
     }
 
@@ -413,42 +435,85 @@ public class ConversionService {
         return outputPath.toString();
     }
 
-    // ============== PDF to Image ==============
+    // ============== PDF to Image (all pages, configurable DPI, ZIP output) ==============
 
-    private String convertPdfToImage(Job job, String format) throws IOException {
-        String outputName = UUID.randomUUID() + "." + format;
-        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+    private String convertPdfToImage(Job job, String format, int dpi) throws IOException {
+        // Validate DPI
+        if (dpi != 72 && dpi != 150 && dpi != 300 && dpi != 600) {
+            dpi = 300;
+        }
 
         File inputFile = new File(job.getInputFilePath());
         try (PDDocument document = Loader.loadPDF(inputFile)) {
             PDFRenderer renderer = new PDFRenderer(document);
-            // Render first page at 300 DPI
-            BufferedImage image = renderer.renderImageWithDPI(0, 300);
-            ImageIO.write(image, format, outputPath.toFile());
-        }
+            int totalPages = document.getNumberOfPages();
 
-        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
-        return outputPath.toString();
+            if (totalPages == 1) {
+                // Single page: return the image directly
+                String outputName = UUID.randomUUID() + "." + format;
+                Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+                BufferedImage image = renderer.renderImageWithDPI(0, dpi);
+                ImageIO.write(image, format, outputPath.toFile());
+                jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
+                return outputPath.toString();
+            }
+
+            // Multi-page: produce individual images, then ZIP them
+            String zipName = UUID.randomUUID() + ".zip";
+            Path zipPath = Paths.get(fileUploadService.getTempDir(), zipName);
+
+            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipPath.toFile()))) {
+                for (int pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+                    BufferedImage image = renderer.renderImageWithDPI(pageIdx, dpi);
+
+                    String imageName = String.format("page_%03d.%s", pageIdx + 1, format);
+                    zos.putNextEntry(new ZipEntry(imageName));
+                    ImageIO.write(image, format, zos);
+                    zos.closeEntry();
+
+                    int progress = 10 + (int) ((double) (pageIdx + 1) / totalPages * 70);
+                    jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
+                }
+            }
+
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 90);
+            return zipPath.toString();
+        }
     }
 
-    // ============== Image to PDF ==============
+    // ============== Image to PDF (page size, orientation support) ==============
 
-    private String convertImageToPdf(Job job) throws IOException {
+    private String convertImageToPdf(Job job, Map<String, String> params) throws IOException {
+        String pageSizeStr = params.getOrDefault("pageSize", "original");
+        String orientationStr = params.getOrDefault("orientation", "auto");
+
         String outputName = UUID.randomUUID() + ".pdf";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         BufferedImage image = ImageIO.read(new File(job.getInputFilePath()));
         if (image == null) {
-            throw new FileProcessingException("Cannot read image file");
+            throw new FileProcessingException("Cannot read image file. Supported formats: JPG, PNG, BMP, TIFF, GIF.");
         }
 
         try (PDDocument document = new PDDocument()) {
-            PDPage page = new PDPage(new PDRectangle(image.getWidth(), image.getHeight()));
+            PDRectangle pageRect = resolvePageSize(pageSizeStr, orientationStr, image);
+            PDPage page = new PDPage(pageRect);
             document.addPage(page);
+
+            // Scale image to fit page with aspect ratio preservation
+            float pageW = pageRect.getWidth();
+            float pageH = pageRect.getHeight();
+            float imgW = image.getWidth();
+            float imgH = image.getHeight();
+            float scale = Math.min(pageW / imgW, pageH / imgH);
+            float drawW = imgW * scale;
+            float drawH = imgH * scale;
+            float x = (pageW - drawW) / 2;
+            float y = (pageH - drawH) / 2;
 
             PDPageContentStream contentStream = new PDPageContentStream(document, page);
             PDImageXObject pdImage = LosslessFactory.createFromImage(document, image);
-            contentStream.drawImage(pdImage, 0, 0, image.getWidth(), image.getHeight());
+            contentStream.drawImage(pdImage, x, y, drawW, drawH);
             contentStream.close();
 
             document.save(outputPath.toFile());
@@ -456,6 +521,34 @@ public class ConversionService {
 
         jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
         return outputPath.toString();
+    }
+
+    /**
+     * Resolve PDF page rectangle based on pageSize and orientation params.
+     */
+    private PDRectangle resolvePageSize(String pageSizeStr, String orientationStr, BufferedImage image) {
+        PDRectangle rect;
+        switch (pageSizeStr.toLowerCase()) {
+            case "a4" -> rect = PDRectangle.A4;
+            case "letter" -> rect = PDRectangle.LETTER;
+            default -> {
+                // "original" — use image dimensions (in points, 72 DPI)
+                return new PDRectangle(image.getWidth(), image.getHeight());
+            }
+        }
+
+        // Apply orientation
+        boolean landscape;
+        switch (orientationStr.toLowerCase()) {
+            case "landscape" -> landscape = true;
+            case "portrait" -> landscape = false;
+            default -> landscape = image.getWidth() > image.getHeight(); // auto
+        }
+
+        if (landscape && rect.getWidth() < rect.getHeight()) {
+            return new PDRectangle(rect.getHeight(), rect.getWidth());
+        }
+        return rect;
     }
 
     // ============== PDF to HTML (LibreOffice with fallback) ==============
@@ -498,13 +591,17 @@ public class ConversionService {
     // ============== PDF to Word (LibreOffice with enhanced POI fallback) ==============
 
     private String convertPdfToWord(Job job, boolean useOcr) throws IOException {
+        return convertPdfToWord(job, useOcr, "eng");
+    }
+
+    private String convertPdfToWord(Job job, boolean useOcr, String language) throws IOException {
         // Prefer LibreOffice for high-fidelity conversion (unless OCR requested)
         if (libreOffice.isAvailable() && !useOcr) {
             log.info("Using LibreOffice for PDF->Word conversion");
             return convertViaLibreOffice(job, "docx");
         }
 
-        log.info("Using enhanced POI fallback for PDF->Word (ocr={})", useOcr);
+        log.info("Using enhanced POI fallback for PDF->Word (ocr={}, lang={})", useOcr, language);
         String outputName = UUID.randomUUID() + ".docx";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
@@ -518,7 +615,15 @@ public class ConversionService {
                     // --- Extract text (OCR or direct) ---
                     String pageText;
                     if (useOcr) {
-                        pageText = extractTextViaOcr(renderer, pageIdx);
+                        BufferedImage pageImage = renderer.renderImageWithDPI(pageIdx, 300);
+                        pageText = ocrService.extractText(pageImage, language);
+                        if (pageText.isBlank()) {
+                            // Fallback to text stripper if OCR yields nothing
+                            PDFTextStripper stripper = new PDFTextStripper();
+                            stripper.setStartPage(pageIdx + 1);
+                            stripper.setEndPage(pageIdx + 1);
+                            pageText = stripper.getText(pdfDocument);
+                        }
                     } else {
                         PDFTextStripper stripper = new PDFTextStripper();
                         stripper.setStartPage(pageIdx + 1);
@@ -717,13 +822,17 @@ public class ConversionService {
     // ============== PDF to Excel (LibreOffice with enhanced POI fallback) ==============
 
     private String convertPdfToExcel(Job job, boolean useOcr) throws IOException {
+        return convertPdfToExcel(job, useOcr, "eng");
+    }
+
+    private String convertPdfToExcel(Job job, boolean useOcr, String language) throws IOException {
         // Prefer LibreOffice (unless OCR requested)
         if (libreOffice.isAvailable() && !useOcr) {
             log.info("Using LibreOffice for PDF->Excel conversion");
             return convertViaLibreOffice(job, "xlsx");
         }
 
-        log.info("Using enhanced POI fallback for PDF->Excel (ocr={})", useOcr);
+        log.info("Using enhanced POI fallback for PDF->Excel (ocr={}, lang={})", useOcr, language);
         String outputName = UUID.randomUUID() + ".xlsx";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
@@ -742,7 +851,14 @@ public class ConversionService {
                     // Extract text (OCR or direct)
                     String pageText;
                     if (useOcr) {
-                        pageText = extractTextViaOcr(renderer, pageIdx);
+                        BufferedImage pageImage = renderer.renderImageWithDPI(pageIdx, 300);
+                        pageText = ocrService.extractText(pageImage, language);
+                        if (pageText.isBlank()) {
+                            PDFTextStripper stripper = new PDFTextStripper();
+                            stripper.setStartPage(pageIdx + 1);
+                            stripper.setEndPage(pageIdx + 1);
+                            pageText = stripper.getText(pdfDocument);
+                        }
                     } else {
                         PDFTextStripper stripper = new PDFTextStripper();
                         stripper.setStartPage(pageIdx + 1);
@@ -912,62 +1028,25 @@ public class ConversionService {
         return outputPath.toString();
     }
 
-    // ============== OCR Helper ==============
+    // ============== OCR PDF (searchable) ==============
 
-    /**
-     * Extract text from a PDF page by rendering it as an image and running Tesseract OCR.
-     * Falls back to PDFTextStripper if Tesseract is not available.
-     */
-    private String extractTextViaOcr(PDFRenderer renderer, int pageIdx) {
-        try {
-            // Render page at 300 DPI for OCR accuracy
-            BufferedImage image = renderer.renderImageWithDPI(pageIdx, 300);
-
-            // Write to temp file
-            Path tempImage = Files.createTempFile("ocr_page_", ".png");
-            Path tempOutput = Files.createTempFile("ocr_out_", "");
-            try {
-                ImageIO.write(image, "png", tempImage.toFile());
-
-                // Run Tesseract
-                ProcessBuilder pb = new ProcessBuilder(
-                        "tesseract", tempImage.toString(), tempOutput.toString());
-                pb.redirectErrorStream(true);
-                Process process = pb.start();
-                int exitCode = process.waitFor();
-
-                if (exitCode == 0) {
-                    // Tesseract writes to output.txt
-                    Path resultFile = Paths.get(tempOutput + ".txt");
-                    if (Files.exists(resultFile)) {
-                        String text = Files.readString(resultFile);
-                        Files.deleteIfExists(resultFile);
-                        return text;
-                    }
-                }
-                log.warn("Tesseract exited with code {} for page {}", exitCode, pageIdx);
-            } finally {
-                Files.deleteIfExists(tempImage);
-                Files.deleteIfExists(tempOutput);
-            }
-        } catch (Exception e) {
-            log.warn("OCR failed for page {}, falling back to text stripper: {}", pageIdx, e.getMessage());
-        }
-        return ""; // Return empty — caller will get regular text extraction as fallback
+    private String convertOcrPdf(Job job, String language) throws IOException {
+        log.info("Creating searchable PDF via OCR (lang={})", language);
+        return ocrService.createSearchablePdf(
+                job.getInputFilePath(),
+                language,
+                fileUploadService.getTempDir(),
+                (currentPage, totalPages) -> {
+                    int progress = 10 + (int) ((double) currentPage / totalPages * 80);
+                    jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
+                });
     }
 
     /**
      * Check if Tesseract OCR is available on the system.
      */
     public boolean isOcrAvailable() {
-        try {
-            Process p = new ProcessBuilder("tesseract", "--version")
-                    .redirectErrorStream(true).start();
-            int exit = p.waitFor();
-            return exit == 0;
-        } catch (Exception e) {
-            return false;
-        }
+        return ocrService.isAvailable();
     }
 
     // ============== TXT to PDF ==============

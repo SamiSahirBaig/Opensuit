@@ -9,5 +9,6 @@ public enum EditType {
     COMPRESS,
     PAGE_NUMBERS,
     HEADER_FOOTER,
-    ANNOTATE
+    ANNOTATE,
+    CROP
 }

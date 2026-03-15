@@ -75,6 +75,7 @@ public class SecurityController {
             case "restrict" -> SecurityAction.RESTRICT;
             case "remove_restrictions", "remove-restrictions" -> SecurityAction.REMOVE_RESTRICTIONS;
             case "clean_metadata", "clean-metadata" -> SecurityAction.CLEAN_METADATA;
+            case "redact" -> SecurityAction.REDACT;
             default -> throw new IllegalArgumentException("Unknown security action: " + type);
         };
     }

@@ -17,6 +17,8 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
+import org.apache.pdfbox.util.Matrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -32,10 +34,8 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -64,8 +64,9 @@ public class EditingService {
                 case ROTATE -> rotatePdf(job, params);
                 case COMPRESS -> compressPdf(job, params);
                 case WATERMARK -> addWatermark(job, params);
-                case PAGE_NUMBERS -> addPageNumbers(job);
+                case PAGE_NUMBERS -> addPageNumbers(job, params);
                 case REORDER -> reorderPages(job, params);
+                case CROP -> cropPdf(job, params);
                 default -> throw new FileProcessingException("Edit type not yet implemented: " + type);
             };
 
@@ -288,22 +289,34 @@ public class EditingService {
         return zipPath.toString();
     }
 
+    // ── ROTATE ───────────────────────────────────────────────────────────
+
     private String rotatePdf(Job job, Map<String, String> params) throws IOException {
         String outputName = UUID.randomUUID() + ".pdf";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         int degrees = params != null && params.containsKey("degrees") ? Integer.parseInt(params.get("degrees")) : 90;
+        String target = params != null ? params.getOrDefault("target", "all") : "all";
+        String pagesParam = params != null ? params.get("pages") : null;
 
         File inputFile = new File(job.getInputFilePath());
         try (PDDocument document = Loader.loadPDF(inputFile)) {
-            for (PDPage page : document.getPages()) {
-                page.setRotation((page.getRotation() + degrees) % 360);
+            int totalPages = document.getNumberOfPages();
+            Set<Integer> targetPages = resolvePageSet(target, pagesParam, totalPages);
+
+            for (int i = 0; i < totalPages; i++) {
+                if (targetPages.contains(i)) {
+                    PDPage page = document.getPage(i);
+                    page.setRotation((page.getRotation() + degrees) % 360);
+                }
             }
             document.save(outputPath.toFile());
         }
 
         return outputPath.toString();
     }
+
+    // ── COMPRESS ─────────────────────────────────────────────────────────
 
     private String compressPdf(Job job, Map<String, String> params) throws IOException {
         String outputName = UUID.randomUUID() + ".pdf";
@@ -433,26 +446,73 @@ public class EditingService {
         }
     }
 
+    // ── WATERMARK ────────────────────────────────────────────────────────
+
     private String addWatermark(Job job, Map<String, String> params) throws IOException {
         String outputName = UUID.randomUUID() + ".pdf";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
+        // Parse watermark parameters
         String watermarkText = params != null && params.containsKey("text") ? params.get("text") : "WATERMARK";
+        float fontSize = parseFloat(params, "fontSize", 60f);
+        float opacity = parseFloat(params, "opacity", 0.3f);
+        String position = params != null ? params.getOrDefault("position", "center") : "center";
+        float rotation = parseFloat(params, "rotation", 0f);
+        String pageRange = params != null ? params.get("pageRange") : null;
+
+        // Parse color (hex format like #C8C8C8 or just C8C8C8)
+        float red = 200f / 255f, green = 200f / 255f, blue = 200f / 255f;
+        String colorParam = params != null ? params.get("color") : null;
+        if (colorParam != null && !colorParam.isEmpty()) {
+            try {
+                String hex = colorParam.startsWith("#") ? colorParam.substring(1) : colorParam;
+                Color c = new Color(Integer.parseInt(hex, 16));
+                red = c.getRed() / 255f;
+                green = c.getGreen() / 255f;
+                blue = c.getBlue() / 255f;
+            } catch (NumberFormatException e) {
+                log.debug("Invalid color '{}', using default gray", colorParam);
+            }
+        }
 
         File inputFile = new File(job.getInputFilePath());
         try (PDDocument document = Loader.loadPDF(inputFile)) {
             PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            int totalPages = document.getNumberOfPages();
+            Set<Integer> targetPages = pageRange != null
+                    ? parsePageRange(pageRange, totalPages)
+                    : allPages(totalPages);
 
-            for (PDPage page : document.getPages()) {
+            for (int i = 0; i < totalPages; i++) {
+                if (!targetPages.contains(i)) continue;
+
+                PDPage page = document.getPage(i);
                 PDRectangle mediaBox = page.getMediaBox();
                 try (PDPageContentStream cs = new PDPageContentStream(
                         document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
 
-                    cs.setFont(font, 60);
-                    cs.setNonStrokingColor(200, 200, 200);
+                    // Set transparency
+                    PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                    gs.setNonStrokingAlphaConstant(opacity);
+                    cs.setGraphicsStateParameters(gs);
+
+                    cs.setFont(font, fontSize);
+                    cs.setNonStrokingColor(red, green, blue);
+
+                    // Calculate position
+                    float textWidth = font.getStringWidth(watermarkText) / 1000 * fontSize;
+                    float textHeight = fontSize;
+                    float[] pos = calculateWatermarkPosition(position, mediaBox, textWidth, textHeight);
 
                     cs.beginText();
-                    cs.newLineAtOffset(mediaBox.getWidth() / 4, mediaBox.getHeight() / 2);
+                    if (rotation != 0) {
+                        // Apply rotation transform around the watermark center
+                        double rad = Math.toRadians(rotation);
+                        Matrix matrix = Matrix.getRotateInstance(rad, pos[0], pos[1]);
+                        cs.setTextMatrix(matrix);
+                    } else {
+                        cs.newLineAtOffset(pos[0], pos[1]);
+                    }
                     cs.showText(watermarkText);
                     cs.endText();
                 }
@@ -463,29 +523,75 @@ public class EditingService {
         return outputPath.toString();
     }
 
-    private String addPageNumbers(Job job) throws IOException {
+    private float[] calculateWatermarkPosition(String position, PDRectangle mediaBox, float textWidth, float textHeight) {
+        float pageW = mediaBox.getWidth();
+        float pageH = mediaBox.getHeight();
+        float margin = 30;
+
+        return switch (position.toLowerCase()) {
+            case "top-left", "top_left" -> new float[]{margin, pageH - margin - textHeight};
+            case "top-right", "top_right" -> new float[]{pageW - textWidth - margin, pageH - margin - textHeight};
+            case "bottom-left", "bottom_left" -> new float[]{margin, margin};
+            case "bottom-right", "bottom_right" -> new float[]{pageW - textWidth - margin, margin};
+            case "top-center", "top_center" -> new float[]{(pageW - textWidth) / 2, pageH - margin - textHeight};
+            case "bottom-center", "bottom_center" -> new float[]{(pageW - textWidth) / 2, margin};
+            default -> new float[]{(pageW - textWidth) / 2, (pageH - textHeight) / 2}; // center
+        };
+    }
+
+    // ── PAGE NUMBERS ─────────────────────────────────────────────────────
+
+    private String addPageNumbers(Job job, Map<String, String> params) throws IOException {
         String outputName = UUID.randomUUID() + ".pdf";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+
+        // Parse parameters
+        String position = params != null ? params.getOrDefault("position", "bottom-center") : "bottom-center";
+        String format = params != null ? params.getOrDefault("format", "labeled") : "labeled";
+        int startNumber = parseInt(params, "startNumber", 1);
+        float fontSize = parseFloat(params, "fontSize", 10f);
+        float margin = parseFloat(params, "margin", 20f);
+        int skipPages = parseInt(params, "skipPages", 0);
+
+        // Parse color
+        float red = 0f, green = 0f, blue = 0f;
+        String colorParam = params != null ? params.get("fontColor") : null;
+        if (colorParam != null && !colorParam.isEmpty()) {
+            try {
+                String hex = colorParam.startsWith("#") ? colorParam.substring(1) : colorParam;
+                Color c = new Color(Integer.parseInt(hex, 16));
+                red = c.getRed() / 255f;
+                green = c.getGreen() / 255f;
+                blue = c.getBlue() / 255f;
+            } catch (NumberFormatException e) {
+                log.debug("Invalid color '{}', using default black", colorParam);
+            }
+        }
 
         File inputFile = new File(job.getInputFilePath());
         try (PDDocument document = Loader.loadPDF(inputFile)) {
             PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             int totalPages = document.getNumberOfPages();
 
-            for (int i = 0; i < totalPages; i++) {
+            for (int i = skipPages; i < totalPages; i++) {
                 PDPage page = document.getPage(i);
                 PDRectangle mediaBox = page.getMediaBox();
+
+                int displayNumber = startNumber + (i - skipPages);
+                String pageNumText = formatPageNumber(format, displayNumber, totalPages - skipPages);
 
                 try (PDPageContentStream cs = new PDPageContentStream(
                         document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
 
-                    cs.setFont(font, 10);
-                    cs.setNonStrokingColor(0, 0, 0);
+                    cs.setFont(font, fontSize);
+                    cs.setNonStrokingColor(red, green, blue);
 
-                    String pageNum = String.format("Page %d of %d", i + 1, totalPages);
+                    float textWidth = font.getStringWidth(pageNumText) / 1000 * fontSize;
+                    float[] pos = calculatePageNumberPosition(position, mediaBox, textWidth, fontSize, margin);
+
                     cs.beginText();
-                    cs.newLineAtOffset(mediaBox.getWidth() / 2 - 30, 20);
-                    cs.showText(pageNum);
+                    cs.newLineAtOffset(pos[0], pos[1]);
+                    cs.showText(pageNumText);
                     cs.endText();
                 }
             }
@@ -494,6 +600,101 @@ public class EditingService {
 
         return outputPath.toString();
     }
+
+    private String formatPageNumber(String format, int pageNum, int totalPages) {
+        return switch (format.toLowerCase()) {
+            case "numeric" -> String.valueOf(pageNum);
+            case "roman" -> toRoman(pageNum);
+            default -> String.format("Page %d of %d", pageNum, totalPages); // "labeled"
+        };
+    }
+
+    private String toRoman(int num) {
+        String[] thousands = {"", "m", "mm", "mmm"};
+        String[] hundreds = {"", "c", "cc", "ccc", "cd", "d", "dc", "dcc", "dccc", "cm"};
+        String[] tens = {"", "x", "xx", "xxx", "xl", "l", "lx", "lxx", "lxxx", "xc"};
+        String[] ones = {"", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix"};
+
+        if (num <= 0 || num > 3999) return String.valueOf(num);
+        return thousands[num / 1000] + hundreds[(num % 1000) / 100] + tens[(num % 100) / 10] + ones[num % 10];
+    }
+
+    private float[] calculatePageNumberPosition(String position, PDRectangle mediaBox,
+                                                 float textWidth, float fontSize, float margin) {
+        float pageW = mediaBox.getWidth();
+        float pageH = mediaBox.getHeight();
+
+        boolean isTop = position.toLowerCase().contains("top");
+        float y = isTop ? (pageH - margin) : margin;
+
+        float x;
+        if (position.toLowerCase().contains("left")) {
+            x = margin;
+        } else if (position.toLowerCase().contains("right")) {
+            x = pageW - textWidth - margin;
+        } else { // center
+            x = (pageW - textWidth) / 2;
+        }
+
+        return new float[]{x, y};
+    }
+
+    // ── CROP ─────────────────────────────────────────────────────────────
+
+    private String cropPdf(Job job, Map<String, String> params) throws IOException {
+        String outputName = UUID.randomUUID() + ".pdf";
+        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+
+        String preset = params != null ? params.getOrDefault("preset", "custom") : "custom";
+        float topMargin = parseFloat(params, "top", 0f);
+        float rightMargin = parseFloat(params, "right", 0f);
+        float bottomMargin = parseFloat(params, "bottom", 0f);
+        float leftMargin = parseFloat(params, "left", 0f);
+        String pagesParam = params != null ? params.get("pages") : null;
+
+        File inputFile = new File(job.getInputFilePath());
+        try (PDDocument document = Loader.loadPDF(inputFile)) {
+            int totalPages = document.getNumberOfPages();
+            Set<Integer> targetPages = pagesParam != null
+                    ? parsePageRange(pagesParam, totalPages)
+                    : allPages(totalPages);
+
+            for (int i = 0; i < totalPages; i++) {
+                if (!targetPages.contains(i)) continue;
+
+                PDPage page = document.getPage(i);
+                PDRectangle mediaBox = page.getMediaBox();
+
+                PDRectangle newBox;
+                if ("a4".equalsIgnoreCase(preset)) {
+                    newBox = PDRectangle.A4;
+                } else if ("letter".equalsIgnoreCase(preset)) {
+                    newBox = PDRectangle.LETTER;
+                } else {
+                    // Custom crop using margin values
+                    newBox = new PDRectangle(
+                            mediaBox.getLowerLeftX() + leftMargin,
+                            mediaBox.getLowerLeftY() + bottomMargin,
+                            mediaBox.getWidth() - leftMargin - rightMargin,
+                            mediaBox.getHeight() - topMargin - bottomMargin
+                    );
+                }
+
+                page.setCropBox(newBox);
+                if ("a4".equalsIgnoreCase(preset) || "letter".equalsIgnoreCase(preset)) {
+                    page.setMediaBox(newBox);
+                }
+
+                int progress = 10 + (int) ((double) (i + 1) / totalPages * 80);
+                jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
+            }
+            document.save(outputPath.toFile());
+        }
+
+        return outputPath.toString();
+    }
+
+    // ── REORDER ──────────────────────────────────────────────────────────
 
     private String reorderPages(Job job, Map<String, String> params) throws IOException {
         String outputName = UUID.randomUUID() + ".pdf";
@@ -527,5 +728,82 @@ public class EditingService {
         }
 
         return outputPath.toString();
+    }
+
+    // ── UTILITY HELPERS ──────────────────────────────────────────────────
+
+    /**
+     * Resolve which pages to target based on target type and page param.
+     * Returns 0-indexed page set.
+     */
+    private Set<Integer> resolvePageSet(String target, String pagesParam, int totalPages) {
+        Set<Integer> pages = new HashSet<>();
+        switch (target.toLowerCase()) {
+            case "odd" -> {
+                for (int i = 0; i < totalPages; i += 2) pages.add(i);
+            }
+            case "even" -> {
+                for (int i = 1; i < totalPages; i += 2) pages.add(i);
+            }
+            case "custom" -> {
+                if (pagesParam != null) {
+                    pages = parsePageRange(pagesParam, totalPages);
+                } else {
+                    pages = allPages(totalPages);
+                }
+            }
+            default -> pages = allPages(totalPages); // "all"
+        }
+        return pages;
+    }
+
+    /**
+     * Parse page range string like "1,3,5-8" into 0-indexed page set.
+     */
+    private Set<Integer> parsePageRange(String rangeStr, int totalPages) {
+        Set<Integer> pages = new HashSet<>();
+        if (rangeStr == null || rangeStr.isEmpty()) return allPages(totalPages);
+
+        for (String part : rangeStr.split(",")) {
+            part = part.trim();
+            if (part.contains("-")) {
+                String[] bounds = part.split("-");
+                int start = Integer.parseInt(bounds[0].trim()) - 1;
+                int end = Integer.parseInt(bounds[1].trim()) - 1;
+                for (int i = Math.max(0, start); i <= Math.min(totalPages - 1, end); i++) {
+                    pages.add(i);
+                }
+            } else {
+                int page = Integer.parseInt(part) - 1;
+                if (page >= 0 && page < totalPages) {
+                    pages.add(page);
+                }
+            }
+        }
+        return pages;
+    }
+
+    private Set<Integer> allPages(int totalPages) {
+        Set<Integer> pages = new HashSet<>();
+        for (int i = 0; i < totalPages; i++) pages.add(i);
+        return pages;
+    }
+
+    private float parseFloat(Map<String, String> params, String key, float defaultValue) {
+        if (params == null || !params.containsKey(key)) return defaultValue;
+        try {
+            return Float.parseFloat(params.get(key));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private int parseInt(Map<String, String> params, String key, int defaultValue) {
+        if (params == null || !params.containsKey(key)) return defaultValue;
+        try {
+            return Integer.parseInt(params.get(key));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 }

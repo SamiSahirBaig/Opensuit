@@ -103,6 +103,7 @@ public class EditController {
             case "page_numbers", "page-numbers" -> EditType.PAGE_NUMBERS;
             case "header_footer", "header-footer" -> EditType.HEADER_FOOTER;
             case "annotate" -> EditType.ANNOTATE;
+            case "crop" -> EditType.CROP;
             default -> throw new IllegalArgumentException("Unknown edit type: " + type);
         };
     }

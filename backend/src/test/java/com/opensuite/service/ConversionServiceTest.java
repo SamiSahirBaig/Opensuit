@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -48,6 +49,9 @@ class ConversionServiceTest {
     @Mock
     private LibreOfficeConverter libreOfficeConverter;
 
+    @Mock
+    private OCRService ocrService;
+
     private ConversionService conversionService;
 
     @TempDir
@@ -57,7 +61,7 @@ class ConversionServiceTest {
 
     @BeforeEach
     void setUp() {
-        conversionService = new ConversionService(jobService, fileUploadService, libreOfficeConverter);
+        conversionService = new ConversionService(jobService, fileUploadService, libreOfficeConverter, ocrService);
     }
 
     private Job createJobWithPdf(String filename) throws IOException {
@@ -292,6 +296,73 @@ class ConversionServiceTest {
 
         verify(jobService).setOutputFile(eq("csv-to-pdf"), anyString());
         verify(jobService).updateJobStatus("csv-to-pdf", JobStatus.COMPLETED, 100);
+    }
+
+    @Test
+    void processConversion_ocrPdf_failsGracefullyWithoutTesseract() throws IOException {
+        Job job = createJobWithPdf("ocr-test.pdf");
+        when(jobService.getJob(job.getId())).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+        when(ocrService.createSearchablePdf(anyString(), anyString(), anyString(), any()))
+                .thenThrow(new IOException("Tesseract OCR is not available"));
+
+        Map<String, String> params = Map.of("language", "eng");
+        conversionService.processConversion(job.getId(), ConversionType.OCR_PDF, params);
+
+        verify(jobService).failJob(eq(job.getId()), contains("Conversion failed"));
+    }
+
+    @Test
+    void processConversion_pdfToJpg_withDpi_completes() throws IOException {
+        Job job = createJobWithPdf("dpi-test.pdf");
+        when(jobService.getJob(job.getId())).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+
+        Map<String, String> params = Map.of("dpi", "150");
+        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_JPG, params);
+
+        verify(jobService).updateJobStatus(job.getId(), JobStatus.COMPLETED, 100);
+    }
+
+    @Test
+    void processConversion_bmpToPdf_delegatesAndCompletes() throws IOException {
+        File bmpFile = tempDir.resolve("test.bmp").toFile();
+        BufferedImage img = new BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB);
+        ImageIO.write(img, "bmp", bmpFile);
+
+        Job job = new Job();
+        job.setId("bmp-to-pdf");
+        job.setInputFilePath(bmpFile.getAbsolutePath());
+        job.setOriginalFileName("test.bmp");
+
+        when(jobService.getJob("bmp-to-pdf")).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+
+        conversionService.processConversion("bmp-to-pdf", ConversionType.BMP_TO_PDF);
+
+        verify(jobService).setOutputFile(eq("bmp-to-pdf"), anyString());
+        verify(jobService).updateJobStatus("bmp-to-pdf", JobStatus.COMPLETED, 100);
+    }
+
+    @Test
+    void processConversion_imageToPdf_withPageSize_completes() throws IOException {
+        File pngFile = tempDir.resolve("sized.png").toFile();
+        BufferedImage img = new BufferedImage(200, 300, BufferedImage.TYPE_INT_RGB);
+        ImageIO.write(img, "png", pngFile);
+
+        Job job = new Job();
+        job.setId("sized-to-pdf");
+        job.setInputFilePath(pngFile.getAbsolutePath());
+        job.setOriginalFileName("sized.png");
+
+        when(jobService.getJob("sized-to-pdf")).thenReturn(job);
+        when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
+
+        Map<String, String> params = Map.of("pageSize", "a4", "orientation", "landscape");
+        conversionService.processConversion("sized-to-pdf", ConversionType.PNG_TO_PDF, params);
+
+        verify(jobService).setOutputFile(eq("sized-to-pdf"), anyString());
+        verify(jobService).updateJobStatus("sized-to-pdf", JobStatus.COMPLETED, 100);
     }
 }
 
