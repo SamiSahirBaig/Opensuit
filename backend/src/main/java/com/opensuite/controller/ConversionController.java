@@ -35,7 +35,7 @@ public class ConversionController {
             +
             "Supported types include: pdf-to-word, word-to-pdf, pdf-to-excel, excel-to-pdf, " +
             "pdf-to-pptx, pptx-to-pdf, pdf-to-jpg, jpg-to-pdf, pdf-to-png, png-to-pdf, " +
-            "pdf-to-html, html-to-pdf, pdf-to-txt, txt-to-pdf, pdf-to-epub, epub-to-pdf, pdf-to-pdfa. " +
+            "pdf-to-html, html-to-pdf, pdf-to-txt, txt-to-pdf, pdf-to-epub, epub-to-pdf, pdf-to-pdfa, csv-to-pdf. " +
             "Poll the returned jobId via GET /api/status/{jobId} to track progress.")
     @ApiResponses({
             @ApiResponse(responseCode = "202", description = "Conversion job accepted and queued", content = @Content(schema = @Schema(implementation = UploadResponse.class))),
@@ -78,6 +78,7 @@ public class ConversionController {
             case "pdf_to_epub", "pdf-to-epub" -> ConversionType.PDF_TO_EPUB;
             case "epub_to_pdf", "epub-to-pdf" -> ConversionType.EPUB_TO_PDF;
             case "pdf_to_pdfa", "pdf-to-pdfa" -> ConversionType.PDF_TO_PDFA;
+            case "csv_to_pdf", "csv-to-pdf" -> ConversionType.CSV_TO_PDF;
             default -> throw new IllegalArgumentException("Unknown conversion type: " + type);
         };
     }

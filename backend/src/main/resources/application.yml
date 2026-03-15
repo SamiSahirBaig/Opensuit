@@ -65,7 +65,7 @@ opensuite:
     requests-per-minute: 30
     burst-capacity: 10
   libreoffice:
-    path: ${LIBREOFFICE_PATH:C:\\Program Files\\LibreOffice\\program\\soffice.exe}
+    path: ${LIBREOFFICE_PATH:/usr/bin/soffice}
     timeout-seconds: 120
 
 # Swagger

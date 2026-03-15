@@ -42,7 +42,7 @@ export const tools: Tool[] = [
         color: '#2563eb',
         gradient: 'from-blue-500 to-indigo-500',
         apiEndpoint: '/api/convert/word-to-pdf',
-        acceptedTypes: '.doc,.docx',
+        acceptedTypes: '.doc,.docx,.rtf,.odt',
         category: 'convert',
     },
     {
@@ -66,7 +66,7 @@ export const tools: Tool[] = [
         color: '#16a34a',
         gradient: 'from-green-500 to-emerald-500',
         apiEndpoint: '/api/convert/excel-to-pdf',
-        acceptedTypes: '.xls,.xlsx',
+        acceptedTypes: '.xls,.xlsx,.csv',
         category: 'convert',
     },
     {
@@ -150,7 +150,19 @@ export const tools: Tool[] = [
         color: '#ea580c',
         gradient: 'from-orange-500 to-red-400',
         apiEndpoint: '/api/convert/pptx-to-pdf',
-        acceptedTypes: '.ppt,.pptx',
+        acceptedTypes: '.ppt,.pptx,.odp',
+        category: 'convert',
+    },
+    {
+        slug: 'csv-to-pdf',
+        title: 'CSV to PDF',
+        description: 'Convert CSV spreadsheet data to formatted PDF documents.',
+        longDescription: 'Transform your CSV (Comma-Separated Values) files into professional, formatted PDF documents. Our converter reads your tabular data, formats it with clear headers and column alignment, and produces a clean PDF perfect for sharing reports, data summaries, or archived records. Supports files with any number of rows and columns.',
+        icon: FileSpreadsheet,
+        color: '#16a34a',
+        gradient: 'from-green-500 to-teal-500',
+        apiEndpoint: '/api/convert/csv-to-pdf',
+        acceptedTypes: '.csv',
         category: 'convert',
     },
     {

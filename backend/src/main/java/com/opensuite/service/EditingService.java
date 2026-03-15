@@ -5,24 +5,37 @@ import com.opensuite.model.EditType;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -296,13 +309,128 @@ public class EditingService {
         String outputName = UUID.randomUUID() + ".pdf";
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
+        // Parse compression parameters
+        String level = params != null ? params.getOrDefault("level", "recommended") : "recommended";
+        String dpiParam = params != null ? params.get("dpi") : null;
+        boolean removeMetadata = params != null && "true".equalsIgnoreCase(params.get("removeMetadata"));
+
+        // Determine target DPI and JPEG quality from preset
+        int targetDpi;
+        float jpegQuality;
+        switch (level.toLowerCase()) {
+            case "extreme" -> { targetDpi = 72;  jpegQuality = 0.3f; }
+            case "low"     -> { targetDpi = 300; jpegQuality = 0.75f; }
+            default        -> { targetDpi = 150; jpegQuality = 0.5f; } // "recommended"
+        }
+
+        // Override DPI if explicitly provided
+        if (dpiParam != null && !dpiParam.isEmpty()) {
+            targetDpi = Integer.parseInt(dpiParam);
+        }
+
         File inputFile = new File(job.getInputFilePath());
+        long originalSize = inputFile.length();
+
         try (PDDocument document = Loader.loadPDF(inputFile)) {
-            // Basic compression by removing unused objects
+            int totalPages = document.getNumberOfPages();
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 15);
+
+            // Compress images on each page
+            for (int i = 0; i < totalPages; i++) {
+                PDPage page = document.getPage(i);
+                compressPageImages(document, page, targetDpi, jpegQuality);
+
+                int progress = 15 + (int) ((double) (i + 1) / totalPages * 65);
+                jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, progress);
+            }
+
+            // Remove metadata if requested
+            if (removeMetadata) {
+                document.getDocumentInformation().setTitle(null);
+                document.getDocumentInformation().setAuthor(null);
+                document.getDocumentInformation().setSubject(null);
+                document.getDocumentInformation().setKeywords(null);
+                document.getDocumentInformation().setCreator(null);
+                document.getDocumentInformation().setProducer(null);
+            }
+
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 85);
             document.save(outputPath.toFile());
         }
 
+        long compressedSize = Files.size(outputPath);
+        log.info("Compression complete: {} → {} bytes ({}% reduction), level={}, dpi={}",
+                originalSize, compressedSize,
+                originalSize > 0 ? (100 - (compressedSize * 100 / originalSize)) : 0,
+                level, targetDpi);
+
+        // Store sizes in the job so the frontend can display them
+        job.setFileSizeBytes(originalSize);
+        // Encode compression result in a parseable format in the error message field (reused as metadata)
+        // Format: "compressed:originalBytes:compressedBytes"
+        jobService.setJobMessage(job.getId(),
+                "compressed:" + originalSize + ":" + compressedSize);
+
         return outputPath.toString();
+    }
+
+    /**
+     * Compress all image XObjects on a page by re-encoding them as JPEG.
+     */
+    private void compressPageImages(PDDocument document, PDPage page, int targetDpi, float jpegQuality) {
+        try {
+            PDResources resources = page.getResources();
+            if (resources == null) return;
+
+            for (COSName name : resources.getXObjectNames()) {
+                PDXObject xObject = resources.getXObject(name);
+                if (xObject instanceof PDImageXObject image) {
+                    try {
+                        BufferedImage bufferedImage = image.getImage();
+                        if (bufferedImage == null) continue;
+
+                        // Skip tiny images (icons, logos) — compress only images > 100px
+                        if (bufferedImage.getWidth() < 100 && bufferedImage.getHeight() < 100) {
+                            continue;
+                        }
+
+                        // Calculate scale factor based on target DPI
+                        // Assume original images are at 300 DPI (common for scanned docs)
+                        float scale = Math.min(1.0f, targetDpi / 300.0f);
+                        int newWidth = Math.max(1, (int) (bufferedImage.getWidth() * scale));
+                        int newHeight = Math.max(1, (int) (bufferedImage.getHeight() * scale));
+
+                        // Scale down
+                        BufferedImage scaled = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+                        Graphics2D g2d = scaled.createGraphics();
+                        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                        g2d.drawImage(bufferedImage, 0, 0, newWidth, newHeight, null);
+                        g2d.dispose();
+
+                        // Re-encode as JPEG
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        ImageWriter jpegWriter = ImageIO.getImageWritersByFormatName("jpeg").next();
+                        ImageWriteParam writeParam = jpegWriter.getDefaultWriteParam();
+                        writeParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                        writeParam.setCompressionQuality(jpegQuality);
+                        jpegWriter.setOutput(ImageIO.createImageOutputStream(baos));
+                        jpegWriter.write(null, new IIOImage(scaled, null, null), writeParam);
+                        jpegWriter.dispose();
+
+                        // Replace the image XObject with the compressed version
+                        PDImageXObject newImage = PDImageXObject.createFromByteArray(
+                                document, baos.toByteArray(), name.getName());
+                        resources.put(name, newImage);
+                    } catch (Exception e) {
+                        // Skip images that can't be processed (encrypted, unsupported format, etc.)
+                        log.debug("Skipping image {} on page: {}", name.getName(), e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not process page resources: {}", e.getMessage());
+        }
     }
 
     private String addWatermark(Job job, Map<String, String> params) throws IOException {

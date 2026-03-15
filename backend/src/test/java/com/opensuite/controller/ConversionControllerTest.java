@@ -66,7 +66,7 @@ class ConversionControllerTest {
                                 "pdf-to-pptx", "pptx-to-pdf", "pdf-to-jpg", "jpg-to-pdf",
                                 "pdf-to-png", "png-to-pdf", "pdf-to-html", "html-to-pdf",
                                 "pdf-to-txt", "txt-to-pdf", "pdf-to-epub", "epub-to-pdf",
-                                "pdf-to-pdfa"
+                                "pdf-to-pdfa", "csv-to-pdf"
                 };
 
                 Job job = new Job();
