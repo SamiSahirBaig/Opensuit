@@ -1,11 +1,17 @@
 package com.opensuite.controller;
 
+import com.opensuite.dto.ErrorResponse;
 import com.opensuite.dto.UploadResponse;
 import com.opensuite.model.EditType;
 import com.opensuite.model.Job;
 import com.opensuite.service.EditingService;
 import com.opensuite.service.FileUploadService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,7 +22,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/edit")
-@Tag(name = "Editing", description = "PDF editing operations")
+@Tag(name = "Editing", description = "PDF editing operations — merge, split, rotate, reorder pages, add watermarks, compress, page numbers, headers/footers, and annotations")
 public class EditController {
 
     private final FileUploadService fileUploadService;
@@ -28,11 +34,21 @@ public class EditController {
     }
 
     @PostMapping("/{type}")
-    @Operation(summary = "Edit a PDF file")
+    @Operation(summary = "Edit a PDF file", description = "Uploads a PDF and starts an asynchronous editing job. " +
+            "Supported types: merge, split, rotate, reorder, watermark, compress, page-numbers, header-footer, annotate. "
+            +
+            "Operation-specific parameters (e.g. rotation angle, watermark text) are passed as additional query/form params.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Edit job accepted and queued", content = @Content(schema = @Schema(implementation = UploadResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Unknown edit type or invalid parameters", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "413", description = "File exceeds the 50 MB upload limit", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "422", description = "File could not be processed", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "500", description = "Unexpected server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public ResponseEntity<UploadResponse> edit(
-            @PathVariable String type,
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false) Map<String, String> allParams) {
+            @Parameter(description = "Edit operation type, e.g. `split`, `rotate`, `watermark`", required = true, example = "rotate") @PathVariable String type,
+            @Parameter(description = "PDF file to edit (max 50 MB)", required = true) @RequestParam("file") MultipartFile file,
+            @Parameter(description = "Additional operation-specific parameters (e.g. `angle=90`, `text=DRAFT`)") @RequestParam(required = false) Map<String, String> allParams) {
 
         EditType editType = parseEditType(type);
 
@@ -58,8 +74,15 @@ public class EditController {
     }
 
     @PostMapping("/merge")
-    @Operation(summary = "Merge multiple PDF files")
-    public ResponseEntity<UploadResponse> merge(@RequestParam("files") MultipartFile[] files) {
+    @Operation(summary = "Merge multiple PDF files", description = "Uploads multiple PDF files and merges them into a single PDF in the order provided.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Merge job accepted and queued", content = @Content(schema = @Schema(implementation = UploadResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid files or fewer than 2 files provided", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "413", description = "Total upload size exceeds the limit", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "500", description = "Unexpected server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UploadResponse> merge(
+            @Parameter(description = "PDF files to merge (2 or more, max 50 MB each)", required = true) @RequestParam("files") MultipartFile[] files) {
         Job job = fileUploadService.uploadFiles(files, "edit:merge");
         editingService.processEdit(job.getId(), EditType.MERGE, null);
 

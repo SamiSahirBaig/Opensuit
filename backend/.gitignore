@@ -46,3 +46,8 @@ build/
 
 ### Temp ###
 temp-files/
+
+### Build/Test Logs ###
+build*.txt
+run*.txt
+test-*.txt

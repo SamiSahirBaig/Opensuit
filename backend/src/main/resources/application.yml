@@ -32,6 +32,11 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.H2Dialect
 
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -79,3 +84,11 @@ logging:
     com.opensuite: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Sentry Error Tracking (disabled when SENTRY_DSN is empty)
+sentry:
+  dsn: ${SENTRY_DSN:}
+  traces-sample-rate: 0.1
+  environment: development
+  send-default-pii: false
+  exception-resolver-order: -2147483647
