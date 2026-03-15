@@ -5,5 +5,6 @@ public enum SecurityAction {
     UNLOCK,
     RESTRICT,
     REMOVE_RESTRICTIONS,
-    CLEAN_METADATA
+    CLEAN_METADATA,
+    REDACT
 }
