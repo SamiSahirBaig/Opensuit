@@ -4,7 +4,6 @@ import com.opensuite.exception.FileProcessingException;
 import com.opensuite.model.ConversionType;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -33,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -52,7 +52,7 @@ public class ConversionService {
     }
 
     @Async("taskExecutor")
-    public void processConversion(String jobId, ConversionType type) {
+    public void processConversion(String jobId, ConversionType type, Map<String, String> params) {
         try {
             jobService.updateJobStatus(jobId, JobStatus.PROCESSING, 10);
             Job job = jobService.getJob(jobId);
@@ -73,7 +73,8 @@ public class ConversionService {
                 case HTML_TO_PDF -> convertHtmlToPdf(job);
                 case PDF_TO_EPUB -> convertViaLibreOffice(job, "epub");
                 case EPUB_TO_PDF -> convertViaLibreOffice(job, "pdf");
-                case PDF_TO_PDFA -> convertViaLibreOffice(job, "pdf");
+                case PDF_TO_PDFA -> convertPdfToPdfa(job, params);
+                case WEB_TO_PDF -> convertWebToPdf(job, params);
             };
 
             jobService.setOutputFile(jobId, outputPath);
@@ -391,7 +392,7 @@ public class ConversionService {
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
+        try (PDDocument document = PDDocument.load(inputFile)) {
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(document);
             Files.writeString(outputPath, text);
@@ -408,7 +409,7 @@ public class ConversionService {
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
+        try (PDDocument document = PDDocument.load(inputFile)) {
             PDFRenderer renderer = new PDFRenderer(document);
             // Render first page at 300 DPI
             BufferedImage image = renderer.renderImageWithDPI(0, 300);
@@ -461,7 +462,7 @@ public class ConversionService {
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
+        try (PDDocument document = PDDocument.load(inputFile)) {
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(document);
 
@@ -498,7 +499,7 @@ public class ConversionService {
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument pdfDocument = Loader.loadPDF(inputFile)) {
+        try (PDDocument pdfDocument = PDDocument.load(inputFile)) {
             PDFTextStripper stripper = new PDFTextStripper();
             String fullText = stripper.getText(pdfDocument);
 
@@ -576,7 +577,7 @@ public class ConversionService {
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument pdfDocument = Loader.loadPDF(inputFile)) {
+        try (PDDocument pdfDocument = PDDocument.load(inputFile)) {
             PDFTextStripper stripper = new PDFTextStripper();
             String fullText = stripper.getText(pdfDocument);
 
@@ -806,5 +807,222 @@ public class ConversionService {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    // ============== PDF to PDF/A (Native PDFBox) ==============
+
+    private String convertPdfToPdfa(Job job, Map<String, String> params) throws IOException {
+        String level = params != null ? params.getOrDefault("level", "1b") : "1b";
+        String outputName = UUID.randomUUID() + ".pdf";
+        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+
+        File inputFile = new File(job.getInputFilePath());
+        try (PDDocument document = PDDocument.load(inputFile)) {
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 30);
+
+            // Remove JavaScript and open actions
+            var catalog = document.getDocumentCatalog();
+            catalog.setOpenAction(null);
+
+            // Remove names dictionary (contains JavaScript entries)
+            try {
+                catalog.setNames(null);
+            } catch (Exception e) {
+                log.debug("Could not clear names dictionary: {}", e.getMessage());
+            }
+
+            // Remove AA (Additional Actions) from pages
+            for (PDPage page : document.getPages()) {
+                page.getCOSObject().removeItem(org.apache.pdfbox.cos.COSName.getPDFName("AA"));
+            }
+
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 50);
+
+            // Determine PDF/A part and conformance from level
+            int part = 1;
+            String conformance = "B";
+            switch (level.toLowerCase()) {
+                case "2b" -> part = 2;
+                case "3b" -> part = 3;
+                default -> part = 1; // 1b
+            }
+
+            // Create XMP metadata for PDF/A compliance
+            try {
+                org.apache.xmpbox.XMPMetadata xmp = org.apache.xmpbox.XMPMetadata.createXMPMetadata();
+
+                // PDF/A identification
+                org.apache.xmpbox.schema.PDFAIdentificationSchema pdfaId = xmp.createAndAddPDFAIdentificationSchema();
+                pdfaId.setPart(part);
+                pdfaId.setConformance(conformance);
+
+                // Dublin Core schema
+                org.apache.xmpbox.schema.DublinCoreSchema dc = xmp.createAndAddDublinCoreSchema();
+                dc.setTitle(job.getOriginalFileName() != null ? job.getOriginalFileName() : "Document");
+                dc.setDescription("PDF/A-" + part + conformance.toLowerCase() + " compliant document");
+
+                // XMP Basic schema
+                org.apache.xmpbox.schema.XMPBasicSchema xmpBasic = xmp.createAndAddXMPBasicSchema();
+                xmpBasic.setCreateDate(java.util.Calendar.getInstance());
+                xmpBasic.setModifyDate(java.util.Calendar.getInstance());
+                xmpBasic.setCreatorTool("OpenSuite PDF/A Converter");
+
+                // Adobe PDF schema
+                org.apache.xmpbox.schema.AdobePDFSchema adobePdf = xmp.createAndAddAdobePDFSchema();
+                adobePdf.setProducer("OpenSuite (Apache PDFBox)");
+
+                // Serialize XMP metadata
+                org.apache.xmpbox.xml.XmpSerializer serializer = new org.apache.xmpbox.xml.XmpSerializer();
+                ByteArrayOutputStream xmpOut = new ByteArrayOutputStream();
+                serializer.serialize(xmp, xmpOut, true);
+
+                org.apache.pdfbox.pdmodel.common.PDMetadata metadata = new org.apache.pdfbox.pdmodel.common.PDMetadata(document);
+                metadata.importXMPMetadata(xmpOut.toByteArray());
+                catalog.setMetadata(metadata);
+            } catch (Exception e) {
+                log.warn("Could not set XMP metadata for PDF/A: {}", e.getMessage());
+            }
+
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 70);
+
+            // Set output intents for PDF/A compliance (sRGB color space)
+            try {
+                var outputIntent = new org.apache.pdfbox.pdmodel.graphics.color.PDOutputIntent(document, null);
+                outputIntent.setInfo("sRGB IEC61966-2.1");
+                outputIntent.setOutputCondition("sRGB IEC61966-2.1");
+                outputIntent.setOutputConditionIdentifier("sRGB IEC61966-2.1");
+                outputIntent.setRegistryName("http://www.color.org");
+                catalog.addOutputIntent(outputIntent);
+            } catch (Exception e) {
+                log.debug("Could not set output intent: {}", e.getMessage());
+            }
+
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
+            document.save(outputPath.toFile());
+        }
+
+        log.info("PDF/A-{} conversion completed for job {}", level, job.getId());
+        return outputPath.toString();
+    }
+
+    // ============== Web to PDF (Chrome Headless) ==============
+
+    private String convertWebToPdf(Job job, Map<String, String> params) throws IOException {
+        String url = params != null ? params.get("url") : null;
+        if (url == null || url.isBlank()) {
+            throw new FileProcessingException("URL is required for web-to-pdf conversion");
+        }
+
+        // Validate URL
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "https://" + url;
+        }
+
+        String pageSize = params.getOrDefault("pageSize", "A4");
+        String outputName = UUID.randomUUID() + ".pdf";
+        Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
+
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 20);
+
+        // Find Chrome/Chromium executable
+        String chromePath = findChromePath();
+        if (chromePath == null) {
+            throw new FileProcessingException(
+                    "Chrome or Chromium is required for web-to-pdf conversion but was not found. " +
+                    "Please install Google Chrome or Chromium.");
+        }
+
+        jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 30);
+
+        // Build Chrome headless command
+        List<String> command = new java.util.ArrayList<>();
+        command.add(chromePath);
+        command.add("--headless");
+        command.add("--disable-gpu");
+        command.add("--no-sandbox");
+        command.add("--disable-dev-shm-usage");
+        command.add("--print-to-pdf=" + outputPath.toAbsolutePath());
+
+        // Page size
+        switch (pageSize.toLowerCase()) {
+            case "letter" -> command.add("--print-to-pdf-no-header");
+            case "a4" -> command.add("--print-to-pdf-no-header");
+        }
+
+        command.add(url);
+
+        log.info("Executing Chrome headless for web-to-pdf: {}", url);
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            // Read output for logging
+            String output = new String(process.getInputStream().readAllBytes());
+            boolean completed = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+
+            if (!completed) {
+                process.destroyForcibly();
+                throw new FileProcessingException("Web to PDF conversion timed out after 60 seconds");
+            }
+
+            int exitCode = process.exitValue();
+            if (exitCode != 0 || !outputPath.toFile().exists()) {
+                log.error("Chrome headless failed with exit code {}: {}", exitCode, output);
+                throw new FileProcessingException("Web to PDF conversion failed. Chrome exit code: " + exitCode);
+            }
+
+            jobService.updateJobStatus(job.getId(), JobStatus.PROCESSING, 80);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new FileProcessingException("Web to PDF conversion interrupted");
+        }
+
+        log.info("Web-to-PDF conversion completed for URL: {}", url);
+        return outputPath.toString();
+    }
+
+    private String findChromePath() {
+        // Common Chrome/Chromium paths
+        String[] paths = {
+            // Windows
+            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+            System.getenv("LOCALAPPDATA") + "\\Google\\Chrome\\Application\\chrome.exe",
+            // Linux
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            // macOS
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        };
+
+        for (String path : paths) {
+            if (path != null && new File(path).exists()) {
+                return path;
+            }
+        }
+
+        // Try finding in PATH
+        try {
+            String os = System.getProperty("os.name", "").toLowerCase();
+            ProcessBuilder pb;
+            if (os.contains("win")) {
+                pb = new ProcessBuilder("where", "chrome");
+            } else {
+                pb = new ProcessBuilder("which", "google-chrome");
+            }
+            Process process = pb.start();
+            String result = new String(process.getInputStream().readAllBytes()).trim();
+            if (process.waitFor() == 0 && !result.isEmpty()) {
+                return result.split("\\n")[0].trim();
+            }
+        } catch (Exception e) {
+            log.debug("Could not find Chrome in PATH: {}", e.getMessage());
+        }
+
+        return null;
     }
 }

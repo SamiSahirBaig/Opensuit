@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { CookieConsent } from "@/components/CookieConsent";
+import { AdStickyMobile } from "@/components/AdUnit";
 
 import Script from "next/script";
 
@@ -80,6 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex-1">{children}</main>
         <Footer />
         <CookieConsent />
+        <AdStickyMobile slot="sticky-mobile-banner" />
       </body>
     </html>
   );

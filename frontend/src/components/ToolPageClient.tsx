@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { FileUpload } from "@/components/FileUpload";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
-import { AdUnit } from "@/components/AdUnit";
+import { AdLeaderboard, AdLargeRectangle, AdSidebar } from "@/components/AdUnit";
 import { uploadFile, uploadFiles, pollJobStatus, JobStatusResponse } from "@/lib/api";
 import { getToolBySlug } from "@/lib/tools";
 import { ArrowRight, RefreshCw, CheckCircle, Shield, Zap, Clock } from "lucide-react";
@@ -17,15 +17,33 @@ import {
 } from "@/lib/analytics";
 import { MergePDFTool } from "@/components/MergePDFTool";
 import { SplitPDFTool } from "@/components/SplitPDFTool";
+import { RemovePDFPagesTool } from "@/components/RemovePDFPagesTool";
+import { ReorderPDFPagesTool } from "@/components/ReorderPDFPagesTool";
+import { OrganizePDFPagesTool } from "@/components/OrganizePDFPagesTool";
+import { ExtractPDFPagesTool } from "@/components/ExtractPDFPagesTool";
+import { PDFtoPDFATool } from "@/components/PDFtoPDFATool";
+import { RepairPDFTool } from "@/components/RepairPDFTool";
+import { WebToPDFTool } from "@/components/WebToPDFTool";
+import { SignPDFTool } from "@/components/SignPDFTool";
+import { ComparePDFTool } from "@/components/ComparePDFTool";
 
 interface ToolPageClientProps {
     slug: string;
 }
 
 export function ToolPageClient({ slug }: ToolPageClientProps) {
-    // Route to dedicated components for merge/split
+    // Route to dedicated components for merge/split/page operations
     if (slug === "merge-pdf") return <MergePDFTool />;
     if (slug === "split-pdf") return <SplitPDFTool />;
+    if (slug === "remove-pdf-pages") return <RemovePDFPagesTool />;
+    if (slug === "reorder-pdf-pages") return <ReorderPDFPagesTool />;
+    if (slug === "organize-pdf-pages") return <OrganizePDFPagesTool />;
+    if (slug === "extract-pdf-pages") return <ExtractPDFPagesTool />;
+    if (slug === "pdf-to-pdfa") return <PDFtoPDFATool />;
+    if (slug === "repair-pdf") return <RepairPDFTool />;
+    if (slug === "web-to-pdf") return <WebToPDFTool />;
+    if (slug === "sign-pdf") return <SignPDFTool />;
+    if (slug === "compare-pdf") return <ComparePDFTool />;
 
     const tool = getToolBySlug(slug);
     if (!tool) return null;
@@ -126,10 +144,15 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
                     style={{ background: `${tool.color}05` }} />
             </section>
 
-            <AdUnit slot="hero-below" format="horizontal" />
+            <div className="border-b border-[#E5E5E5] bg-white">
+                <AdLeaderboard />
+            </div>
 
-            {/* Upload & Processing Area */}
-            <section className="py-12 sm:py-16">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    <div className="lg:col-span-8">
+                        {/* Upload & Processing Area */}
+                        <section className="py-12 sm:py-16">
                 <div className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8">
                     {status?.status === "COMPLETED" ? (
                         /* Success state with reset */
@@ -230,7 +253,9 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
                 </div>
             </section>
 
-            <AdUnit slot="mid-content" format="rectangle" />
+            <div className="bg-[#FAFAFA] border-y border-[#E5E5E5] py-4">
+                <AdLeaderboard slot="mid-content" />
+            </div>
 
             {/* Long-form SEO Content */}
             <section className="border-t border-white/5 py-16">
@@ -299,6 +324,13 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
                     </div>
                 </div>
             </section>
+                    </div>
+
+                    <div className="hidden lg:block lg:col-span-4 sticky top-24 py-12">
+                        <AdSidebar slot="sidebar-ad" className="flex justify-end" />
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

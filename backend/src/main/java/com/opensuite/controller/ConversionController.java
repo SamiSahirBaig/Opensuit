@@ -51,7 +51,7 @@ public class ConversionController {
         Job job = fileUploadService.uploadFile(file, "convert:" + type);
 
         // Start async processing
-        conversionService.processConversion(job.getId(), conversionType);
+        conversionService.processConversion(job.getId(), conversionType, null);
 
         return ResponseEntity.accepted().body(new UploadResponse(
                 job.getId(),
@@ -78,6 +78,7 @@ public class ConversionController {
             case "pdf_to_epub", "pdf-to-epub" -> ConversionType.PDF_TO_EPUB;
             case "epub_to_pdf", "epub-to-pdf" -> ConversionType.EPUB_TO_PDF;
             case "pdf_to_pdfa", "pdf-to-pdfa" -> ConversionType.PDF_TO_PDFA;
+            case "web_to_pdf", "web-to-pdf" -> ConversionType.WEB_TO_PDF;
             default -> throw new IllegalArgumentException("Unknown conversion type: " + type);
         };
     }

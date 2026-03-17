@@ -81,7 +81,7 @@ class ConversionServiceTest {
         when(jobService.getJob(job.getId())).thenReturn(job);
         when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
 
-        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_TXT);
+        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_TXT, null);
 
         verify(jobService).updateJobStatus(job.getId(), JobStatus.PROCESSING, 10);
         verify(jobService).setOutputFile(eq(job.getId()), anyString());
@@ -112,7 +112,7 @@ class ConversionServiceTest {
         when(jobService.getJob("txt-to-pdf")).thenReturn(job);
         when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
 
-        conversionService.processConversion("txt-to-pdf", ConversionType.TXT_TO_PDF);
+        conversionService.processConversion("txt-to-pdf", ConversionType.TXT_TO_PDF, null);
 
         verify(jobService).setOutputFile(eq("txt-to-pdf"), anyString());
         verify(jobService).updateJobStatus("txt-to-pdf", JobStatus.COMPLETED, 100);
@@ -132,7 +132,7 @@ class ConversionServiceTest {
         when(jobService.getJob("png-to-pdf")).thenReturn(job);
         when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
 
-        conversionService.processConversion("png-to-pdf", ConversionType.PNG_TO_PDF);
+        conversionService.processConversion("png-to-pdf", ConversionType.PNG_TO_PDF, null);
 
         verify(jobService).setOutputFile(eq("png-to-pdf"), anyString());
         verify(jobService).updateJobStatus("png-to-pdf", JobStatus.COMPLETED, 100);
@@ -148,7 +148,7 @@ class ConversionServiceTest {
         when(jobService.getJob("fail-job")).thenReturn(job);
         when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
 
-        conversionService.processConversion("fail-job", ConversionType.PDF_TO_TXT);
+        conversionService.processConversion("fail-job", ConversionType.PDF_TO_TXT, null);
 
         verify(jobService).failJob(eq("fail-job"), anyString());
         verify(jobService, never()).updateJobStatus("fail-job", JobStatus.COMPLETED, 100);
@@ -160,7 +160,7 @@ class ConversionServiceTest {
         when(jobService.getJob(job.getId())).thenReturn(job);
         when(fileUploadService.getTempDir()).thenReturn(tempDir.toString());
 
-        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_HTML);
+        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_HTML, null);
 
         verify(jobService).setOutputFile(eq(job.getId()), contains(".html"));
         verify(jobService).updateJobStatus(job.getId(), JobStatus.COMPLETED, 100);
@@ -175,7 +175,7 @@ class ConversionServiceTest {
         when(libreOfficeConverter.convert(anyString(), eq("epub"), anyString()))
                 .thenReturn(tempDir.resolve("lo-test.epub"));
 
-        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_EPUB);
+        conversionService.processConversion(job.getId(), ConversionType.PDF_TO_EPUB, null);
 
         verify(libreOfficeConverter).convert(anyString(), eq("epub"), anyString());
     }

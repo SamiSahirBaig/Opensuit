@@ -2,6 +2,7 @@
 
 import { Download, CheckCircle, AlertCircle, Loader2, ServerOff } from "lucide-react";
 import { JobStatusResponse, getDownloadUrl } from "@/lib/api";
+import { AdProcessingBanner, AdLargeRectangle } from "@/components/AdUnit";
 
 interface ProcessingStatusProps {
     status: JobStatusResponse | null;
@@ -29,6 +30,14 @@ export function ProcessingStatus({ status, isProcessing, error }: ProcessingStat
                         <div className="progress-fill" style={{ width: `${status?.progress || 5}%` }} />
                     </div>
                     <p className="text-xs text-gray-500 mt-2">{status?.progress || 0}% complete</p>
+                    
+                    {/* AD #4: Processing AdBanner (Highest Priority) */}
+                    <div className="mt-6 border-t border-[#E5E5E5] pt-4">
+                        <AdProcessingBanner slot="processing-banner" />
+                        <p className="text-center text-xs text-[#999999] mt-2">
+                           This usually takes a few seconds...
+                        </p>
+                    </div>
                 </div>
             )}
 
@@ -44,6 +53,12 @@ export function ProcessingStatus({ status, isProcessing, error }: ProcessingStat
                             <span className="text-xs text-gray-500">Your file is ready to download</span>
                         </div>
                     </div>
+                    
+                    {/* AD #5: Download AdRectangle */}
+                    <div className="my-6">
+                        <AdLargeRectangle slot="download-banner" />
+                    </div>
+
                     <a
                         href={getDownloadUrl(status.downloadToken)}
                         className="btn-primary inline-flex items-center gap-2 no-underline w-full justify-center py-3"

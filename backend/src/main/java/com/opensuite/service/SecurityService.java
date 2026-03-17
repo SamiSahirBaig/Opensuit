@@ -4,7 +4,6 @@ import com.opensuite.exception.FileProcessingException;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
 import com.opensuite.model.SecurityAction;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
@@ -65,7 +64,7 @@ public class SecurityService {
         String password = params != null ? params.getOrDefault("password", "password") : "password";
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
+        try (PDDocument document = PDDocument.load(inputFile)) {
             AccessPermission ap = new AccessPermission();
             StandardProtectionPolicy policy = new StandardProtectionPolicy(password, password, ap);
             policy.setEncryptionKeyLength(128);
@@ -83,7 +82,7 @@ public class SecurityService {
         String password = params != null ? params.getOrDefault("password", "") : "";
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile, password)) {
+        try (PDDocument document = PDDocument.load(inputFile, password)) {
             document.setAllSecurityToBeRemoved(true);
             document.save(outputPath.toFile());
         }
@@ -98,7 +97,7 @@ public class SecurityService {
         String ownerPassword = params != null ? params.getOrDefault("password", "owner123") : "owner123";
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
+        try (PDDocument document = PDDocument.load(inputFile)) {
             AccessPermission ap = new AccessPermission();
             ap.setCanPrint(false);
             ap.setCanModify(false);
@@ -121,7 +120,7 @@ public class SecurityService {
         String password = params != null ? params.getOrDefault("password", "") : "";
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile, password)) {
+        try (PDDocument document = PDDocument.load(inputFile, password)) {
             document.setAllSecurityToBeRemoved(true);
             document.save(outputPath.toFile());
         }
@@ -134,7 +133,7 @@ public class SecurityService {
         Path outputPath = Paths.get(fileUploadService.getTempDir(), outputName);
 
         File inputFile = new File(job.getInputFilePath());
-        try (PDDocument document = Loader.loadPDF(inputFile)) {
+        try (PDDocument document = PDDocument.load(inputFile)) {
             PDDocumentInformation info = new PDDocumentInformation();
             document.setDocumentInformation(info);
             // Remove XMP metadata if present

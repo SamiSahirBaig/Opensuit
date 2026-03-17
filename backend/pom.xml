@@ -23,7 +23,7 @@
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
         <bucket4j.version>8.7.0</bucket4j.version>
         <springdoc.version>2.3.0</springdoc.version>
-        <pdfbox.version>3.0.1</pdfbox.version>
+        <pdfbox.version>2.0.30</pdfbox.version>
         <poi.version>5.2.5</poi.version>
     </properties>
 
@@ -84,6 +84,39 @@
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>xmpbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+
+        <!-- Text Diff -->
+        <dependency>
+            <groupId>io.github.java-diff-utils</groupId>
+            <artifactId>java-diff-utils</artifactId>
+            <version>4.12</version>
+        </dependency>
+
+        <!-- OpenAI Integration -->
+        <dependency>
+            <groupId>com.theokanning.openai-gpt3-java</groupId>
+            <artifactId>service</artifactId>
+            <version>0.18.2</version>
+        </dependency>
+
+        <!-- PDF Table Extraction -->
+        <dependency>
+            <groupId>technology.tabula</groupId>
+            <artifactId>tabula</artifactId>
+            <version>1.0.5</version>
+            <exclusions>
+                <!-- Exclude older pdfbox brought in by tabula to prefer ours -->
+                <exclusion>
+                    <groupId>org.apache.pdfbox</groupId>
+                    <artifactId>pdfbox</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Office Document Processing -->

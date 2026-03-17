@@ -9,5 +9,11 @@ public enum EditType {
     COMPRESS,
     PAGE_NUMBERS,
     HEADER_FOOTER,
-    ANNOTATE
+    ANNOTATE,
+    REMOVE_PAGES,
+    EXTRACT_PAGES,
+    ORGANIZE_PAGES,
+    REPAIR,
+    SIGN,
+    COMPARE
 }
