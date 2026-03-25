@@ -1,7 +1,9 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Download, CheckCircle, AlertCircle, Loader2, ServerOff } from "lucide-react";
 import { JobStatusResponse, getDownloadUrl } from "@/lib/api";
+import { AdUnit } from "@/components/AdUnit";
 
 interface ProcessingStatusProps {
     status: JobStatusResponse | null;
@@ -10,6 +12,17 @@ interface ProcessingStatusProps {
 }
 
 export function ProcessingStatus({ status, isProcessing, error }: ProcessingStatusProps) {
+    const [adRefreshKey, setAdRefreshKey] = useState(0);
+
+    // Refresh ad every 30 seconds during long processing
+    useEffect(() => {
+        if (!isProcessing) return;
+        const interval = setInterval(() => {
+            setAdRefreshKey(prev => prev + 1);
+        }, 30000);
+        return () => clearInterval(interval);
+    }, [isProcessing]);
+
     if (!isProcessing && !status && !error) return null;
 
     const isServerError = error?.includes("Unable to connect") || error?.includes("server");
@@ -29,6 +42,11 @@ export function ProcessingStatus({ status, isProcessing, error }: ProcessingStat
                         <div className="progress-fill" style={{ width: `${status?.progress || 5}%` }} />
                     </div>
                     <p className="text-xs text-gray-500 mt-2">{status?.progress || 0}% complete</p>
+
+                    {/* Ad #4: Processing Banner (Highest value) */}
+                    <div className="mt-6 w-full flex justify-center border-t border-gray-100 pt-6">
+                        <AdUnit key={`proc_${adRefreshKey}`} slot="processing_banner" format="horizontal" responsive={true} className="w-[320px] md:w-[728px] min-h-[50px] md:min-h-[90px]" />
+                    </div>
                 </div>
             )}
 
@@ -55,6 +73,11 @@ export function ProcessingStatus({ status, isProcessing, error }: ProcessingStat
                     <p className="text-xs text-gray-500 mt-3 text-center">
                         ⏱ Link expires in 10 minutes · Files auto-deleted after 1 hour
                     </p>
+
+                    {/* Ad #5: Download Rectangle */}
+                    <div className="mt-6 w-full flex justify-center border-t border-green-500/10 pt-6">
+                        <AdUnit slot="download_rectangle" format="rectangle" responsive={true} className="w-[336px] min-h-[280px]" />
+                    </div>
                 </div>
             )}
 

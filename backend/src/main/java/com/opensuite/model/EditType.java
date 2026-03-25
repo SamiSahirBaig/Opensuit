@@ -9,5 +9,14 @@ public enum EditType {
     COMPRESS,
     PAGE_NUMBERS,
     HEADER_FOOTER,
-    ANNOTATE
+    ANNOTATE,
+    CROP,
+    PDF_TO_PDFA,
+    REPAIR_PDF,
+    WEB_TO_PDF,
+    SIGN_PDF,
+    COMPARE_PDF,
+    AI_SUMMARIZE,
+    AI_TRANSLATE,
+    EXTRACT_ALL
 }

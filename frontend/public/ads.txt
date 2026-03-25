@@ -1,6 +1,1 @@
-# ads.txt — Google AdSense Authorized Digital Sellers
-# Replace pub-XXXXXXXXXXXXXXXX with your real AdSense publisher ID
-# after your application is approved at https://adsense.google.com
-#
-# Format: <domain>, <publisher-id>, <relationship>, <certification-authority-id>
 google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0

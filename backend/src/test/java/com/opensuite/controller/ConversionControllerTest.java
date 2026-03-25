@@ -1,5 +1,6 @@
 package com.opensuite.controller;
 
+import com.opensuite.config.RateLimitFilter;
 import com.opensuite.model.Job;
 import com.opensuite.model.JobStatus;
 import com.opensuite.service.ConversionService;
@@ -9,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,7 +21,8 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(ConversionController.class)
+@WebMvcTest(value = ConversionController.class, excludeFilters = @ComponentScan.Filter(
+        type = FilterType.ASSIGNABLE_TYPE, classes = RateLimitFilter.class))
 @Import(SecurityConfig.class)
 class ConversionControllerTest {
 
@@ -47,7 +51,7 @@ class ConversionControllerTest {
                                 .andExpect(jsonPath("$.jobId").value("conv-123"))
                                 .andExpect(jsonPath("$.status").value("QUEUED"));
 
-                verify(conversionService).processConversion(eq("conv-123"), any());
+                verify(conversionService).processConversion(eq("conv-123"), any(), any(java.util.Map.class));
         }
 
         @Test
@@ -66,7 +70,8 @@ class ConversionControllerTest {
                                 "pdf-to-pptx", "pptx-to-pdf", "pdf-to-jpg", "jpg-to-pdf",
                                 "pdf-to-png", "png-to-pdf", "pdf-to-html", "html-to-pdf",
                                 "pdf-to-txt", "txt-to-pdf", "pdf-to-epub", "epub-to-pdf",
-                                "pdf-to-pdfa"
+                                "pdf-to-pdfa", "csv-to-pdf",
+                                "ocr-pdf", "bmp-to-pdf", "tiff-to-pdf", "gif-to-pdf"
                 };
 
                 Job job = new Job();

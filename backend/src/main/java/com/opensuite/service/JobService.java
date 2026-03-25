@@ -32,6 +32,13 @@ public class JobService {
                 .orElseThrow(() -> new ResourceNotFoundException("Job not found: " + jobId));
     }
 
+    public Job createJob(String jobType) {
+        Job job = new Job();
+        job.setJobType(jobType);
+        job.setStatus(JobStatus.QUEUED);
+        return jobRepository.save(job);
+    }
+
     public JobStatusResponse getJobStatus(String jobId) {
         Job job = getJob(jobId);
 
@@ -39,11 +46,25 @@ public class JobService {
         response.setJobId(job.getId());
         response.setStatus(job.getStatus().name());
         response.setProgress(job.getProgress());
+        response.setOriginalFileName(job.getOriginalFileName());
 
         if (job.getStatus() == JobStatus.COMPLETED) {
             String token = generateDownloadToken(job);
             response.setDownloadToken(token);
             response.setMessage("Processing complete. Download available.");
+
+            // Parse compression metadata if present
+            // Format: "compressed:originalBytes:compressedBytes"
+            String meta = job.getErrorMessage();
+            if (meta != null && meta.startsWith("compressed:")) {
+                try {
+                    String[] parts = meta.split(":");
+                    response.setOriginalSizeBytes(Long.parseLong(parts[1]));
+                    response.setCompressedSizeBytes(Long.parseLong(parts[2]));
+                } catch (Exception e) {
+                    // Ignore parse errors
+                }
+            }
         } else if (job.getStatus() == JobStatus.FAILED) {
             response.setMessage(job.getErrorMessage() != null ? job.getErrorMessage() : "Processing failed.");
         } else if (job.getStatus() == JobStatus.PROCESSING) {
@@ -79,6 +100,12 @@ public class JobService {
     public void setOutputFile(String jobId, String outputPath) {
         Job job = getJob(jobId);
         job.setOutputFilePath(outputPath);
+        jobRepository.save(job);
+    }
+
+    public void setJobMessage(String jobId, String message) {
+        Job job = getJob(jobId);
+        job.setErrorMessage(message); // Reuse errorMessage field for metadata when not a real error
         jobRepository.save(job);
     }
 

@@ -58,6 +58,7 @@ export default withSentryConfig(nextConfig, {
   silent: true,
 
   // Upload source maps for readable stack traces in Sentry
+  // When SENTRY_AUTH_TOKEN is not set, uploads are automatically skipped
   sourcemaps: {
     deleteSourcemapsAfterUpload: true,
   },
@@ -65,12 +66,4 @@ export default withSentryConfig(nextConfig, {
   // Only upload source maps when SENTRY_AUTH_TOKEN is set (CI/production)
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-
-  // Automatically instrument server-side code
-  autoInstrumentServerFunctions: true,
-  autoInstrumentMiddleware: true,
-
-  // Disable Sentry webpack plugin when no auth token (local dev)
-  disableServerWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
-  disableClientWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
 });

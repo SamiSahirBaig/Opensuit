@@ -17,15 +17,56 @@ import {
 } from "@/lib/analytics";
 import { MergePDFTool } from "@/components/MergePDFTool";
 import { SplitPDFTool } from "@/components/SplitPDFTool";
+import { CompressPDFTool } from "@/components/CompressPDFTool";
+import { PDFToOfficeTool } from "@/components/PDFToOfficeTool";
+import { OCRTool } from "@/components/OCRTool";
+import { PDFToImageTool } from "@/components/PDFToImageTool";
+import { ImageToPDFTool } from "@/components/ImageToPDFTool";
+import { WatermarkPDFTool } from "@/components/WatermarkPDFTool";
+import { PageNumbersTool } from "@/components/PageNumbersTool";
+import { RotatePDFTool } from "@/components/RotatePDFTool";
+import { CropPDFTool } from "@/components/CropPDFTool";
+import { ProtectPDFTool } from "@/components/ProtectPDFTool";
+import { UnlockPDFTool } from "@/components/UnlockPDFTool";
+import { PdfToPdfaTool } from "@/components/PDFToPDFATool";
+import { RepairPdfTool } from "@/components/RepairPDFTool";
+import { WebToPdfTool } from "@/components/WebToPDFTool";
+import { SignPdfTool } from "@/components/SignPDFTool";
+import { ComparePdfTool } from "@/components/ComparePDFTool";
+import { AISummarizerTool } from "@/components/AISummarizerTool";
+import { AITranslateTool } from "@/components/AITranslateTool";
+import { ExtractDataTool } from "@/components/ExtractDataTool";
 
 interface ToolPageClientProps {
     slug: string;
 }
 
 export function ToolPageClient({ slug }: ToolPageClientProps) {
-    // Route to dedicated components for merge/split
+    // Route to dedicated components for specific tools
     if (slug === "merge-pdf") return <MergePDFTool />;
     if (slug === "split-pdf") return <SplitPDFTool />;
+    if (slug === "compress-pdf") return <CompressPDFTool />;
+    if (slug === "pdf-to-word" || slug === "pdf-to-excel" || slug === "pdf-to-pptx")
+        return <PDFToOfficeTool slug={slug} />;
+    if (slug === "ocr-pdf") return <OCRTool />;
+    if (slug === "pdf-to-jpg" || slug === "pdf-to-png")
+        return <PDFToImageTool slug={slug} />;
+    if (slug === "jpg-to-pdf" || slug === "png-to-pdf" || slug === "bmp-to-pdf" || slug === "tiff-to-pdf" || slug === "gif-to-pdf")
+        return <ImageToPDFTool slug={slug} />;
+    if (slug === "watermark-pdf") return <WatermarkPDFTool />;
+    if (slug === "add-page-numbers") return <PageNumbersTool />;
+    if (slug === "rotate-pdf") return <RotatePDFTool />;
+    if (slug === "crop-pdf") return <CropPDFTool />;
+    if (slug === "protect-pdf") return <ProtectPDFTool />;
+    if (slug === "unlock-pdf") return <UnlockPDFTool />;
+    if (slug === "pdf-to-pdfa") return <PdfToPdfaTool />;
+    if (slug === "repair-pdf") return <RepairPdfTool />;
+    if (slug === "web-to-pdf") return <WebToPdfTool />;
+    if (slug === "sign-pdf") return <SignPdfTool />;
+    if (slug === "compare-pdf") return <ComparePdfTool />;
+    if (slug === "ai-summarize") return <AISummarizerTool />;
+    if (slug === "ai-translate") return <AITranslateTool />;
+    if (slug === "extract-data") return <ExtractDataTool />;
 
     const tool = getToolBySlug(slug);
     if (!tool) return null;
@@ -130,7 +171,8 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
 
             {/* Upload & Processing Area */}
             <section className="py-12 sm:py-16">
-                <div className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8">
+                <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row gap-8 items-start justify-center">
+                    <div className="flex-1 w-full max-w-2xl mx-auto">
                     {status?.status === "COMPLETED" ? (
                         /* Success state with reset */
                         <div className="text-center">
@@ -150,6 +192,13 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
                                 multiFile={tool.multiFile}
                                 onFilesSelected={setFiles}
                             />
+
+                            {/* Ad #3: Below Upload Zone */}
+                            {!isProcessing && files.length === 0 && (
+                                <div className="mt-8 mb-4 w-full flex justify-center border border-gray-100/10 rounded-xl p-2 bg-white/5">
+                                    <AdUnit slot="tool_below_upload" format="horizontal" responsive={true} className="w-[320px] md:w-[728px] min-h-[50px] md:min-h-[90px]" />
+                                </div>
+                            )}
 
                             {/* Extra Fields */}
                             {tool.extraFields && tool.extraFields.length > 0 && files.length > 0 && (
@@ -209,6 +258,11 @@ export function ToolPageClient({ slug }: ToolPageClientProps) {
                             )}
                         </>
                     )}
+                    </div>
+                    {/* Ad #5: Sidebar */}
+                    <div className="hidden lg:block w-[300px] shrink-0 sticky top-24 mt-8 lg:mt-0">
+                        <AdUnit slot="tool_sidebar" format="vertical" responsive={false} className="w-[300px] min-h-[600px] rounded-xl overflow-hidden bg-white/5" />
+                    </div>
                 </div>
             </section>
 

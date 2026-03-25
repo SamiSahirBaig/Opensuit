@@ -6,6 +6,8 @@ import com.opensuite.model.EditType;
 import com.opensuite.model.Job;
 import com.opensuite.service.EditingService;
 import com.opensuite.service.FileUploadService;
+import com.opensuite.service.JobService;
+import com.opensuite.service.WebToPdfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -27,10 +29,15 @@ public class EditController {
 
     private final FileUploadService fileUploadService;
     private final EditingService editingService;
+    private final JobService jobService;
+    private final WebToPdfService webToPdfService;
 
-    public EditController(FileUploadService fileUploadService, EditingService editingService) {
+    public EditController(FileUploadService fileUploadService, EditingService editingService,
+                          JobService jobService, WebToPdfService webToPdfService) {
         this.fileUploadService = fileUploadService;
         this.editingService = editingService;
+        this.jobService = jobService;
+        this.webToPdfService = webToPdfService;
     }
 
     @PostMapping("/{type}")
@@ -92,6 +99,50 @@ public class EditController {
                 "Merge started. Check status at /api/status/" + job.getId()));
     }
 
+    @PostMapping("/web-to-pdf")
+    @Operation(summary = "Convert Webpage to PDF", description = "Converts a URL to a PDF file using a headless browser.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Conversion job accepted and queued", content = @Content(schema = @Schema(implementation = UploadResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid URL", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "500", description = "Unexpected server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UploadResponse> webToPdf(
+            @Parameter(description = "URL to convert", required = true) @RequestParam("url") String url,
+            @Parameter(description = "Page size (e.g. A4, Letter)") @RequestParam(value = "pageSize", defaultValue = "A4") String pageSize,
+            @Parameter(description = "Include background images") @RequestParam(value = "includeImages", defaultValue = "true") boolean includeImages) {
+        
+        Job job = jobService.createJob("edit:web_to_pdf");
+        webToPdfService.convertUrlToPdf(job.getId(), url, pageSize, includeImages);
+
+        return ResponseEntity.accepted().body(new UploadResponse(
+                job.getId(),
+                "QUEUED",
+                "Web to PDF conversion started. Check status at /api/status/" + job.getId()));
+    }
+
+    @PostMapping("/compare")
+    @Operation(summary = "Compare two PDF files", description = "Uploads two PDF files to compare.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Compare job accepted and queued", content = @Content(schema = @Schema(implementation = UploadResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Exactly 2 files required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "500", description = "Unexpected server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UploadResponse> compare(
+            @Parameter(description = "Two PDF files to compare", required = true) @RequestParam("files") MultipartFile[] files) {
+        
+        if (files == null || files.length != 2) {
+            throw new IllegalArgumentException("Exactly two files are required for comparison.");
+        }
+        
+        Job job = fileUploadService.uploadFiles(files, "edit:compare_pdf");
+        editingService.processEdit(job.getId(), EditType.COMPARE_PDF, null);
+
+        return ResponseEntity.accepted().body(new UploadResponse(
+                job.getId(),
+                "QUEUED",
+                "Comparison started. Check status at /api/status/" + job.getId()));
+    }
+
     private EditType parseEditType(String type) {
         return switch (type.toLowerCase().replace("-", "_")) {
             case "merge" -> EditType.MERGE;
@@ -103,6 +154,15 @@ public class EditController {
             case "page_numbers", "page-numbers" -> EditType.PAGE_NUMBERS;
             case "header_footer", "header-footer" -> EditType.HEADER_FOOTER;
             case "annotate" -> EditType.ANNOTATE;
+            case "crop" -> EditType.CROP;
+            case "pdf_to_pdfa", "pdf-to-pdfa" -> EditType.PDF_TO_PDFA;
+            case "repair_pdf", "repair-pdf" -> EditType.REPAIR_PDF;
+            case "web_to_pdf", "web-to-pdf" -> EditType.WEB_TO_PDF;
+            case "sign_pdf", "sign-pdf" -> EditType.SIGN_PDF;
+            case "compare_pdf", "compare-pdf" -> EditType.COMPARE_PDF;
+            case "ai_summarize", "ai-summarize" -> EditType.AI_SUMMARIZE;
+            case "ai_translate", "ai-translate" -> EditType.AI_TRANSLATE;
+            case "extract_data", "extract-data" -> EditType.EXTRACT_ALL;
             default -> throw new IllegalArgumentException("Unknown edit type: " + type);
         };
     }

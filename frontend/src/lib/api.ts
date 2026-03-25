@@ -17,6 +17,8 @@ export interface JobStatusResponse {
     downloadToken: string | null;
     message: string;
     originalFileName: string;
+    originalSizeBytes?: number;
+    compressedSizeBytes?: number;
 }
 
 class ApiError extends Error {

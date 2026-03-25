@@ -17,5 +17,10 @@ public enum ConversionType {
     TXT_TO_PDF,
     PDF_TO_EPUB,
     EPUB_TO_PDF,
-    PDF_TO_PDFA
+    PDF_TO_PDFA,
+    CSV_TO_PDF,
+    OCR_PDF,
+    BMP_TO_PDF,
+    TIFF_TO_PDF,
+    GIF_TO_PDF
 }
